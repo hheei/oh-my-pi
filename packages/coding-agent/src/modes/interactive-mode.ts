@@ -229,6 +229,7 @@ import {
 	theme,
 } from "./theme/theme";
 import { getSlashCommandTypeIcon } from "./theme/tui-adapters";
+import { layoutTodoHudSpine } from "./todo-hud-spine";
 import type {
 	AgentHubOpenOptions,
 	CompactionQueuedMessage,
@@ -2674,51 +2675,31 @@ export class InteractiveMode implements InteractiveModeContext {
 		const phaseSlice = expanded ? phases.slice(baseIdx) : phases.slice(baseIdx, baseIdx + 1 + subsequentStageCap);
 		const hiddenStages = phases.length - baseIdx - phaseSlice.length;
 
-		// Flatten the stage tree into content rows plus a per-row top-level spine
-		// glyph (`├─` for stage rows, `│` for continuations). The spine never
-		// closes downward — a short elbow tail (`└────`) ends the block instead,
-		// so spine + bend + tail form one continuous progress path.
-		const spineGlyphs: string[] = [];
-		const contentLines: string[] = [];
-		const pushBlock = (block: string | string[]): void => {
-			const rows = Array.isArray(block) ? block : [block];
-			if (rows.length === 0) return;
-			spineGlyphs.push(`${theme.tree.branch} `);
-			contentLines.push(replaceTabs(rows[0]!));
-			for (let i = 1; i < rows.length; i++) {
-				spineGlyphs.push(`${theme.tree.vertical}  `);
-				contentLines.push(replaceTabs(rows[i]!));
-			}
-		};
+		// Flatten stages through the fork-owned spine layout: last stage closes
+		// with `└─`, and there is no dummy elbow tail after the tree.
+		const blocks: Array<string | string[]> = [];
 		for (let i = 0; i < phaseSlice.length; i++) {
-			pushBlock(renderPhase(phaseSlice[i], baseIdx + i + 1, baseIdx + i === activeIdx));
+			blocks.push(renderPhase(phaseSlice[i], baseIdx + i + 1, baseIdx + i === activeIdx));
 		}
 		if (hiddenStages > 0) {
-			pushBlock(theme.fg("muted", formatMoreItems(hiddenStages, "stage")));
+			blocks.push(theme.fg("muted", formatMoreItems(hiddenStages, "stage")));
 		}
+		const { spineGlyphs, contentLines } = layoutTodoHudSpine(blocks, theme);
 
-		// Closing tail: hook + a few horizontals. Every tail cell is 1 column in
-		// both glyph sets, so string slicing below splits it by visible cells.
-		const tailLen = 6;
-		const tail = theme.tree.hook + theme.tree.horizontal.repeat(Math.max(0, tailLen - visibleWidth(theme.tree.hook)));
-
-		// Overall progress (summed across every stage) fills the path in reading
-		// order: down the spine, around the bend, out along the tail.
-		// Clamp so partial progress lights at least one cell; a closed plan fills
-		// the entire path until the configured auto-clear removes the HUD.
+		// Overall progress fills the spine in reading order. Clamp so partial
+		// progress lights at least one cell; a closed plan fills the entire
+		// path until the configured auto-clear removes the HUD.
 		const totalTasks = phases.reduce((sum, phase) => sum + phase.tasks.length, 0);
 		const closedTasks = phases.reduce((sum, phase) => sum + phase.tasks.filter(isClosedTodo).length, 0);
-		const pathLen = contentLines.length + tailLen;
-		let filled = Math.round((closedTasks / totalTasks) * pathLen);
-		if (closedTasks > 0) filled = Math.max(filled, 1);
-		if (closedTasks < totalTasks) filled = Math.min(filled, pathLen - 1);
+		const pathLen = contentLines.length;
+		let filled = totalTasks === 0 || pathLen === 0 ? 0 : Math.round((closedTasks / totalTasks) * pathLen);
+		if (closedTasks > 0 && pathLen > 0) filled = Math.max(filled, 1);
+		if (closedTasks < totalTasks && pathLen > 0) filled = Math.min(filled, pathLen - 1);
 
 		const lines = ["", theme.bold(theme.fg("accent", "TODO"))];
 		for (let i = 0; i < contentLines.length; i++) {
 			lines.push(` ${theme.fg(i < filled ? "accent" : "dim", spineGlyphs[i]!)}${contentLines[i]}`);
 		}
-		const tailFilled = Math.max(0, Math.min(filled - contentLines.length, tail.length));
-		lines.push(` ${theme.fg("accent", tail.slice(0, tailFilled))}${theme.fg("dim", tail.slice(tailFilled))}`);
 		this.todoContainer.addChild(new Text(lines.join("\n"), 1, 0));
 	}
 
