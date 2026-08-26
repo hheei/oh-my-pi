@@ -390,6 +390,11 @@ describe("InteractiveMode todo HUD persistence", () => {
 	});
 });
 
+function dummyTodoHudElbowTail(): string {
+	const hookWidth = Bun.stringWidth(theme.tree.hook);
+	return theme.tree.hook + theme.tree.horizontal.repeat(Math.max(0, 6 - hookWidth));
+}
+
 describe("InteractiveMode todo HUD anchor", () => {
 	let tempDir: TempDir;
 	let authStorage: AuthStorage;
@@ -494,13 +499,59 @@ describe("InteractiveMode todo HUD anchor", () => {
 			.flatMap(line => line.split("\n"))
 			.map(line => Bun.stripANSI(line));
 		// One stage still renders the compact title; progress belongs to the
-		// tree spine and tail.
+		// tree spine.
 		const root = lines.find(line => line.includes("TODO"));
 		expect(root?.trim()).toBe("TODO");
 		// The stage keeps its task progress; no roman numeral for a lone stage.
 		expect(lines.some(line => line.includes("Tasks") && line.includes("0/2"))).toBe(true);
 		expect(lines.some(line => line.includes("I. Tasks"))).toBe(false);
 		expect(lines.some(line => line.includes("alpha"))).toBe(true);
+	});
+
+	it("closes a single-stage HUD with last-sibling and no empty elbow row", () => {
+		mode.setTodos([
+			{
+				name: "Tasks",
+				tasks: [
+					{ content: "alpha", status: "pending" },
+					{ content: "beta", status: "pending" },
+				],
+			},
+		]);
+		const lines = mode.todoContainer
+			.render(80)
+			.flatMap(line => line.split("\n"))
+			.map(line => Bun.stripANSI(line));
+		const header = lines.find(line => line.includes("Tasks") && line.includes("0/2"));
+		expect(header).toContain(theme.tree.last);
+		expect(header).not.toContain(theme.tree.branch);
+		expect(lines.some(line => line.trim() === dummyTodoHudElbowTail())).toBe(false);
+		const alpha = lines.find(line => line.includes("alpha"));
+		expect(alpha?.includes(theme.tree.vertical)).toBe(false);
+	});
+
+	it("closes a multi-stage HUD on the last stage instead of a dummy tail", () => {
+		mode.setTodos([
+			{
+				name: "Foundation",
+				tasks: [{ content: "first task", status: "in_progress" }],
+			},
+			{
+				name: "Verification",
+				tasks: [{ content: "run tests", status: "pending" }],
+			},
+		]);
+		const lines = mode.todoContainer
+			.render(80)
+			.flatMap(line => line.split("\n"))
+			.map(line => Bun.stripANSI(line));
+		const first = lines.find(line => line.includes("I. Foundation"));
+		const last = lines.find(line => line.includes("II. Verification"));
+		expect(first).toContain(theme.tree.branch);
+		expect(first).not.toContain(theme.tree.last);
+		expect(last).toContain(theme.tree.last);
+		expect(last).not.toContain(theme.tree.branch);
+		expect(lines.some(line => line.trim() === dummyTodoHudElbowTail())).toBe(false);
 	});
 
 	it("caps the visible stage list and summarizes the hidden ones in an overflow row", () => {
