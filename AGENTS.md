@@ -1,5 +1,110 @@
 # Development Rules
 
+## Fork Development Workflow
+
+This checkout is the personal fork `hheei/oh-my-pi` of `can1357/oh-my-pi`.
+Keep the fork easy to update by preserving the following Git layout:
+
+- `origin` is the fork and `upstream` is the source repository.
+- `main` tracks `origin/main` and pushes to `origin`; do not repoint it to
+  `upstream`.
+- Work on feature branches, for example `git switch -c feat/<short-name> main`.
+- Update the fork's main branch with `git fetch upstream --prune`,
+  `git merge --ff-only upstream/main`, and `git push origin main` when the
+  fast-forward is possible.
+- Before opening or handing off a change, run `git status`, `git diff --check`,
+  and the narrowest relevant check. Do not commit unless the user asks.
+
+The repository-local Git configuration already keeps ordinary pushes pointed at
+`origin` and provides `git upstream-fetch`, `git upstream-status`, and
+`git upstream-diff`. These settings live in `.git/config`, not in tracked files.
+
+Do not delete tracked upstream files merely because an optional subsystem is not
+used in this fork. Keep CI, release, native, Python, Docker, Bazel, Nix, and
+documentation files available for upstream synchronization. Use `.gitignore`
+or `.git/info/exclude` for local-only state; removing an upstream file is an
+intentional product decision and creates a permanent fork diff.
+
+## Fork Customization Boundary
+
+Upstream source files may be modified when a fork feature needs an integration
+point, but keep the upstream diff as small and stable as possible:
+
+- Put fork-owned behavior in a separate TypeScript module under the relevant
+  package's `src/` tree.
+- In an upstream file, prefer one explicit function call or adapter hook that
+  delegates to the fork-owned module. Do not copy or substantially rewrite an
+  upstream function to add fork behavior.
+- Keep the hook easy to remove or rebase, and preserve the upstream behavior
+  when the fork feature is disabled or has no applicable input.
+- Add tests beside the fork-owned implementation; test the upstream hook only
+  for the integration contract it exposes.
+- When a feature needs several hooks, keep each hook narrow and document the
+  fork-owned module path in the change rather than distributing logic across
+  upstream files.
+
+## Fork Feature Workflow
+
+Use this order when extending the fork:
+
+1. For a bug, describe how it happens and what the user observes in a
+   repository issue, following the upstream issue format. The upstream robot
+   handles bug issues, so do not open a PR for an issue unless the user gives a
+   different instruction. The agent must not create a GitHub issue unless the
+   user explicitly asks it to do so.
+2. For a small feature, first check whether the Extension API can provide the
+   behavior without modifying upstream source.
+3. For a large feature, combine the smallest practical upstream integration
+   hook with a fork-owned extension. Keep the feature logic out of upstream
+   files except where the hook is required.
+4. Store fork extensions under `packages/hepi/<extension-name>/`. Use the
+   `omp-<name>` naming format for both the directory and the npm package, such
+   as `packages/hepi/omp-review/` and package name `omp-review`.
+
+Each hepi extension should be independently understandable, testable, and
+publishable to npm. Give it its own `package.json`, entrypoint, public-facing
+configuration, and focused tests. Depend on public OMP APIs or published
+packages rather than private source paths or another hepi extension's internals;
+keep shared behavior in a separately publishable package when it is genuinely
+needed.
+
+When the user explicitly asks for a code modification, create a short-lived
+work branch from the local `main`, complete and verify the change there, then
+check whether it can be merged into the fork. Do not modify or push `main`
+directly, and do not merge or push without explicit approval. During upstream
+sync, check the relevant issue and upstream history for an equivalent fix. If
+upstream already fixed the bug, drop the redundant local fix commits from an
+unshared work branch instead of carrying both implementations forward; never
+rewrite shared or pushed history without approval.
+
+Record issue references, local fixes, upstream-equivalent commits, and dropped
+duplicate fixes in the ignored `.agents/` development memory described below.
+
+## Local Development Baseline
+
+- Requires Bun 1.3.14 or newer; use the repository's pinned toolchain when
+  available.
+- First setup: `bun install --frozen-lockfile`.
+- Start the coding agent from the repository root with `bun run dev`.
+- Run the type/lint gate with `bun check`; never invoke `tsc` or `npx tsc`.
+- Use `bun run test` for the repository test buckets and
+  `bun run test:rs` for Rust tests; never invoke `cargo test` directly.
+- Keep API keys, local profiles, session data, generated output, and personal
+  agent instructions out of commits.
+- Use `./scripts/omp` as the fork's single local install-and-run entrypoint; it
+  reuses dependency and native build caches when inputs are unchanged.
+
+## Local Development Memory
+
+`.agents/` is ignored machine-local memory for this fork and its cooperating
+agents. Keep a concise, searchable record in `.agents/development-log.md` for
+feature work, bug issue references, upstream sync checks, and local commits
+that were superseded or dropped. For grill-with-docs work, record the topic,
+question, evidence, decision, rejected alternatives, and follow-up in
+`.agents/grill-with-docs.md`.
+Do not store credentials, tokens, session transcripts, or other sensitive data
+there.
+
 ## Default Context
 
 This repo contains multiple packages, but **`packages/coding-agent/`** is the primary focus. Unless otherwise specified, assume work refers to this package.
@@ -251,6 +356,7 @@ For the bash tool specifically:
 - NEVER commit unless asked.
 - Never use `tsc`/`npx tsc` — always `bun check`.
 - Never run `cargo test` directly for Rust tests — use `bun run test:rs`. It runs `cargo nextest run` (config: `.config/nextest.toml`) followed by a `cargo test --doc` pass, because nextest does not execute doctests. The doctest pass currently executes nothing (pi-natives is a `cdylib`, which rustdoc skips; pi-builtins' examples are `ignore`d vendored uutils docs) and exists so the first runnable doctest added to a lib crate is actually run.
+- Run `git diff --check` before handing off a change.
 - Merge commits (maintainer merges of PRs) follow: `Merge PR #<number>: <conventional PR subject> (@<author>)` — e.g. `Merge PR #6386: feat(catalog): add native Meta Model API provider (@eggpeat)`.
 ## Rust Build Profiles
 
@@ -329,6 +435,11 @@ Location: `packages/*/CHANGELOG.md` (per package).
 - External contributions: `Added feature X ([#456](https://github.com/can1357/oh-my-pi/pull/456) by [@username](https://github.com/username))`.
 
 ## Releasing
+
+Release, tag, publish, or deploy commands are not part of ordinary fork
+development. Run them only when the user explicitly asks for a release of this
+fork or an upstream contribution has been accepted and the release process is
+being followed deliberately.
 
 1. Ensure all changes since last release are in each affected package's `[Unreleased]` section.
 2. Run `bun run release`.
