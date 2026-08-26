@@ -1,7 +1,6 @@
 import * as path from "node:path";
 import type { AssistantMessage, Usage } from "@oh-my-pi/pi-ai";
-import type { Component } from "@oh-my-pi/pi-tui";
-import { Container, Text } from "@oh-my-pi/pi-tui";
+import { type Component, Container, Text, visibleWidth } from "@oh-my-pi/pi-tui";
 import { InternalUrlRouter, XD_URL_PREFIX } from "../../internal-urls";
 import { getLanguageFromPath, theme } from "../../modes/theme/theme";
 import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../tools/path-utils";
@@ -556,13 +555,17 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		if (displayRows.length === 1) {
 			const row = displayRows[0]!;
 			if (!this.#shouldRenderPreviewRow(row)) {
-				const statusSymbol = this.#formatStatus(this.#statusForTargets(row.targets));
-				const pathDisplay = this.#formatRowPath(row);
-				const lines = [` ${statusSymbol} ${theme.fg("toolTitle", theme.bold("Read"))} ${pathDisplay}`.trimEnd()];
 				const usageRows = this.#usageRowsBySummaryRow(displayRows).get(0) ?? [];
-				this.#appendUsageRows(lines, usageRows);
-				this.#text.setText(lines.join("\n"));
-				this.addChild(this.#text);
+				this.addChild(
+					this.#widthAwareSummary(width => {
+						const statusSymbol = this.#formatStatus(this.#statusForTargets(row.targets));
+						const prefix = ` ${statusSymbol} ${theme.fg("toolTitle", theme.bold("Read"))} `;
+						const pathDisplay = this.#formatRowPath(row, Math.max(0, width - visibleWidth(prefix)));
+						const lines = [`${prefix}${pathDisplay}`.trimEnd()];
+						this.#appendUsageRows(lines, usageRows);
+						return lines;
+					}),
+				);
 			}
 			for (const entry of this.#previewEntriesForRow(row)) {
 				this.#addContentPreview(entry);
@@ -571,18 +574,20 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 			return;
 		}
 
-		const header = `${theme.fg("toolTitle", theme.bold("Read"))}${theme.fg("dim", ` (${displayRows.length})`)}`;
-		const lines = [` ${theme.format.bullet} ${header}`];
 		const entriesWithoutPreview = entries.filter(entry => !this.#shouldRenderPreview(entry));
 		const summaryTargets = this.#displayTargetsForEntries(entriesWithoutPreview);
 		const rows = this.#buildSummaryRows(summaryTargets);
 		const usageRowsBySummaryRow = this.#usageRowsBySummaryRow(rows);
-		for (const [index, row] of rows.entries()) {
-			this.#appendSummaryRow(lines, row, index, rows.length, usageRowsBySummaryRow.get(index) ?? []);
-		}
-
-		this.#text.setText(lines.join("\n"));
-		this.addChild(this.#text);
+		this.addChild(
+			this.#widthAwareSummary(width => {
+				const header = `${theme.fg("toolTitle", theme.bold("Read"))}${theme.fg("dim", ` (${displayRows.length})`)}`;
+				const lines = [` ${theme.format.bullet} ${header}`];
+				for (const [index, row] of rows.entries()) {
+					this.#appendSummaryRow(lines, row, index, rows.length, usageRowsBySummaryRow.get(index) ?? [], width);
+				}
+				return lines;
+			}),
+		);
 
 		for (const entry of entries) {
 			if (this.#shouldRenderPreview(entry)) {
@@ -664,15 +669,27 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		return rows;
 	}
 
+	#widthAwareSummary(buildLines: (width: number) => string[]): Component {
+		return {
+			render: (width: number) => {
+				this.#text.setText(buildLines(width).join("\n"));
+				return this.#text.render(width);
+			},
+			invalidate: () => this.#text.invalidate(),
+		};
+	}
+
 	#appendSummaryRow(
 		lines: string[],
 		row: ReadSummaryRow,
 		index: number,
 		total: number,
 		usageRows: ReadUsageRow[],
+		width: number,
 	): void {
 		const connector = index === total - 1 ? theme.tree.last : theme.tree.branch;
-		lines.push(`   ${theme.fg("dim", connector)} ${this.#formatRow(row)}`.trimEnd());
+		const prefix = `   ${theme.fg("dim", connector)} `;
+		lines.push(`${prefix}${this.#formatRow(row, Math.max(0, width - visibleWidth(prefix)))}`.trimEnd());
 		this.#appendUsageRows(lines, usageRows);
 	}
 
@@ -710,19 +727,24 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		);
 	}
 
-	#formatRow(row: ReadSummaryRow): string {
+	#formatRow(row: ReadSummaryRow, maxWidth?: number): string {
 		const status = this.#statusForTargets(row.targets);
 		const statusPrefix = status === "success" ? "" : `${this.#formatStatus(status)} `;
-		return `${statusPrefix}${this.#formatRowPath(row)}`;
+		const pathWidth = maxWidth === undefined ? undefined : Math.max(0, maxWidth - visibleWidth(statusPrefix));
+		return `${statusPrefix}${this.#formatRowPath(row, pathWidth)}`;
 	}
 
-	#formatRowPath(row: ReadSummaryRow): string {
-		return this.#formatPathValue(row.targetPath, {
-			correctedFrom: this.#correctedFromForTargets(row.targets),
-			conflictCount: this.#conflictCountForTargets(row.targets),
-			line: firstSelectorLineForTargets(row.targets),
-			linkPath: linkPathForTargets(row.targets),
-		});
+	#formatRowPath(row: ReadSummaryRow, maxWidth?: number): string {
+		return this.#formatPathValue(
+			row.targetPath,
+			{
+				correctedFrom: this.#correctedFromForTargets(row.targets),
+				conflictCount: this.#conflictCountForTargets(row.targets),
+				line: firstSelectorLineForTargets(row.targets),
+				linkPath: linkPathForTargets(row.targets),
+			},
+			maxWidth,
+		);
 	}
 
 	#statusForTargets(targets: ReadDisplayTarget[]): ReadEntry["status"] {
@@ -770,11 +792,15 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	#formatPathValue(
 		value: string,
 		options: { correctedFrom?: string; conflictCount?: number; line?: number; linkPath?: string } = {},
+		maxWidth?: number,
 	): string {
 		const split = splitPathAndSel(value);
 		const selectorSuffix = split.sel ? `:${split.sel}` : "";
 		const baseValue = split.sel ? split.path : value;
-		const filePath = formatGroupedReadDisplayPath(baseValue);
+		const badge = this.#formatConflictBadge(options.conflictCount);
+		const reserved = visibleWidth(selectorSuffix) + visibleWidth(badge);
+		const pathBudget = maxWidth === undefined ? undefined : Math.max(0, maxWidth - reserved);
+		const filePath = formatGroupedReadDisplayPath(baseValue, pathBudget);
 		let pathDisplay = filePath ? theme.fg("accent", filePath) : theme.fg("toolOutput", "…");
 		if (filePath && options.linkPath) {
 			const linkOptions = options.line !== undefined ? { line: options.line } : undefined;
@@ -784,9 +810,25 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 			pathDisplay += theme.fg("accent", selectorSuffix);
 		}
 		if (options.correctedFrom) {
-			pathDisplay += theme.fg("dim", ` (corrected from ${formatGroupedReadDisplayPath(options.correctedFrom)})`);
+			const labelPrefix = " (corrected from ";
+			const labelSuffix = ")";
+			const innerBudget =
+				maxWidth === undefined
+					? undefined
+					: Math.max(
+							0,
+							maxWidth -
+								visibleWidth(filePath) -
+								reserved -
+								visibleWidth(labelPrefix) -
+								visibleWidth(labelSuffix),
+						);
+			pathDisplay += theme.fg(
+				"dim",
+				`${labelPrefix}${formatGroupedReadDisplayPath(options.correctedFrom, innerBudget)}${labelSuffix}`,
+			);
 		}
-		pathDisplay += this.#formatConflictBadge(options.conflictCount);
+		pathDisplay += badge;
 		return pathDisplay;
 	}
 
