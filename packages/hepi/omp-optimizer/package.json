@@ -1,0 +1,27 @@
+{
+	"name": "omp-optimizer",
+	"version": "0.1.0",
+	"description": "Token-optimization extension for Oh My Pi",
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"check": "biome check . --no-errors-on-unmatched && tsgo -p tsconfig.json --noEmit",
+		"test": "bun test src"
+	},
+	"omp": {
+		"extensions": ["./src/index.ts"]
+	},
+	"keywords": ["omp", "omp-extension", "optimizer", "caveman", "rtk", "ponytail"],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/hheei/oh-my-pi.git",
+		"directory": "packages/hepi/omp-optimizer"
+	},
+	"peerDependencies": {
+		"@oh-my-pi/pi-coding-agent": "*",
+		"@oh-my-pi/pi-tui": "*",
+		"@oh-my-pi/pi-ai": "*",
+		"@oh-my-pi/pi-utils": "*"
+	}
+}
