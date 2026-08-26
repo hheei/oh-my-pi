@@ -8,6 +8,7 @@ import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../tool
 import { PREVIEW_LIMITS, shortenPath } from "../../tools/render-utils";
 import { fileHyperlink, renderCodeCell, tryResolveInternalUrlSync } from "../../tui";
 import { canonicalizeMessage } from "../../utils/thinking-display";
+import { GROUPED_READ_USAGE_PREFIX } from "./grouped-read-usage-prefix";
 import type { ToolExecutionHandle } from "./tool-execution";
 import { formatUsageRow } from "./usage-row";
 
@@ -477,8 +478,9 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	}
 
 	/**
-	 * Nest one request's usage beneath the last visible read call from that
+	 * Attach one request's usage after the last visible read call from that
 	 * request. Parallel reads share one row rather than duplicating request totals.
+	 * Indent is the group-column prefix from {@link GROUPED_READ_USAGE_PREFIX}.
 	 */
 	attachUsage(
 		toolCallIds: readonly string[],
@@ -556,7 +558,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 				const pathDisplay = this.#formatRowPath(row);
 				const lines = [` ${statusSymbol} ${theme.fg("toolTitle", theme.bold("Read"))} ${pathDisplay}`.trimEnd()];
 				const usageRows = this.#usageRowsBySummaryRow(displayRows).get(0) ?? [];
-				this.#appendUsageRows(lines, usageRows, "   ");
+				this.#appendUsageRows(lines, usageRows, GROUPED_READ_USAGE_PREFIX);
 				this.#text.setText(lines.join("\n"));
 				this.addChild(this.#text);
 			}
@@ -669,13 +671,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	): void {
 		const connector = index === total - 1 ? theme.tree.last : theme.tree.branch;
 		lines.push(`   ${theme.fg("dim", connector)} ${this.#formatRow(row)}`.trimEnd());
-
-		const connectorWidth = Bun.stringWidth(connector);
-		const continuation =
-			index === total - 1
-				? " ".repeat(connectorWidth)
-				: `${theme.tree.vertical}${" ".repeat(Math.max(0, connectorWidth - Bun.stringWidth(theme.tree.vertical)))}`;
-		this.#appendUsageRows(lines, usageRows, `   ${continuation} `);
+		this.#appendUsageRows(lines, usageRows, GROUPED_READ_USAGE_PREFIX);
 	}
 
 	#usageRowsBySummaryRow(rows: ReadSummaryRow[]): Map<number, ReadUsageRow[]> {
