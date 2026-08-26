@@ -8,7 +8,7 @@ import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../tool
 import { PREVIEW_LIMITS, shortenPath } from "../../tools/render-utils";
 import { fileHyperlink, renderCodeCell, tryResolveInternalUrlSync } from "../../tui";
 import { canonicalizeMessage } from "../../utils/thinking-display";
-import { GROUPED_READ_USAGE_PREFIX } from "./grouped-read-usage-prefix";
+import { appendGroupedReadUsageLines, GROUPED_READ_USAGE_PREFIX } from "./grouped-read-usage-prefix";
 import type { ToolExecutionHandle } from "./tool-execution";
 import { formatUsageRow } from "./usage-row";
 
@@ -480,7 +480,8 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	/**
 	 * Attach one request's usage after the last visible read call from that
 	 * request. Parallel reads share one row rather than duplicating request totals.
-	 * Indent is the group-column prefix from {@link GROUPED_READ_USAGE_PREFIX}.
+	 * Layout is the fork-owned blank line plus title-column prefix from
+	 * {@link appendGroupedReadUsageLines}.
 	 */
 	attachUsage(
 		toolCallIds: readonly string[],
@@ -558,7 +559,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 				const pathDisplay = this.#formatRowPath(row);
 				const lines = [` ${statusSymbol} ${theme.fg("toolTitle", theme.bold("Read"))} ${pathDisplay}`.trimEnd()];
 				const usageRows = this.#usageRowsBySummaryRow(displayRows).get(0) ?? [];
-				this.#appendUsageRows(lines, usageRows, GROUPED_READ_USAGE_PREFIX);
+				this.#appendUsageRows(lines, usageRows);
 				this.#text.setText(lines.join("\n"));
 				this.addChild(this.#text);
 			}
@@ -671,7 +672,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	): void {
 		const connector = index === total - 1 ? theme.tree.last : theme.tree.branch;
 		lines.push(`   ${theme.fg("dim", connector)} ${this.#formatRow(row)}`.trimEnd());
-		this.#appendUsageRows(lines, usageRows, GROUPED_READ_USAGE_PREFIX);
+		this.#appendUsageRows(lines, usageRows);
 	}
 
 	#usageRowsBySummaryRow(rows: ReadSummaryRow[]): Map<number, ReadUsageRow[]> {
@@ -699,15 +700,16 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		return usageRowsByIndex;
 	}
 
-	#appendUsageRows(lines: string[], usageRows: ReadUsageRow[], prefix: string): void {
-		for (const usageRow of usageRows) {
-			lines.push(
+	#appendUsageRows(lines: string[], usageRows: ReadUsageRow[]): void {
+		appendGroupedReadUsageLines(
+			lines,
+			usageRows.map(usageRow =>
 				theme.fg(
 					"dim",
-					`${prefix}${formatUsageRow(usageRow.usage, usageRow.durationMs, usageRow.ttftMs, usageRow.timestamp, usageRow.turnElapsedMs)}`,
+					`${GROUPED_READ_USAGE_PREFIX}${formatUsageRow(usageRow.usage, usageRow.durationMs, usageRow.ttftMs, usageRow.timestamp, usageRow.turnElapsedMs)}`,
 				),
-			);
-		}
+			),
+		);
 	}
 
 	#formatRow(row: ReadSummaryRow): string {

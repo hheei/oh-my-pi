@@ -96,7 +96,7 @@ describe("ReadToolGroupComponent", () => {
 		expect(plain).not.toContain(`${themeModule.theme.tree.last} ${themeModule.theme.status.enabled}`);
 	});
 
-	it("aligns each turn's usage row with the group column after the last path it covers", () => {
+	it("places each turn's usage on a title-column line after a blank separator", () => {
 		const component = new ReadToolGroupComponent();
 		const onePath = path.resolve("/tmp/one.ts");
 		const twoPath = path.resolve("/tmp/two.ts");
@@ -142,15 +142,17 @@ describe("ReadToolGroupComponent", () => {
 			.map((line, index) => (line.includes("2026-01-02 03:04:06") ? index : -1))
 			.filter(index => index >= 0);
 
-		expect(firstUsageIndex).toBe(onePathIndex + 1);
+		expect(lines[onePathIndex + 1]?.trim()).toBe("");
+		expect(firstUsageIndex).toBe(onePathIndex + 2);
 		expect(lines[firstUsageIndex]?.startsWith(GROUPED_READ_USAGE_PREFIX)).toBe(true);
+		expect(lines[firstUsageIndex]?.startsWith(`${GROUPED_READ_USAGE_PREFIX} `)).toBe(false);
 		expect(lines[firstUsageIndex]?.includes(themeModule.theme.tree.vertical)).toBe(false);
-		expect(lines[firstUsageIndex]?.startsWith(`${GROUPED_READ_USAGE_PREFIX}   `)).toBe(false);
 		expect(twoPathIndex).toBeGreaterThan(firstUsageIndex);
 		expect(threePathIndex).toBeGreaterThan(twoPathIndex);
-		expect(parallelUsageIndices).toEqual([threePathIndex + 1]);
+		expect(lines[threePathIndex + 1]?.trim()).toBe("");
+		expect(parallelUsageIndices).toEqual([threePathIndex + 2]);
 		expect(lines[parallelUsageIndices[0]!]?.startsWith(GROUPED_READ_USAGE_PREFIX)).toBe(true);
-		expect(lines[parallelUsageIndices[0]!]?.startsWith(`${GROUPED_READ_USAGE_PREFIX}   `)).toBe(false);
+		expect(lines[parallelUsageIndices[0]!]?.startsWith(`${GROUPED_READ_USAGE_PREFIX} `)).toBe(false);
 	});
 
 	it("splits a single selector-delimited read argument into child rows", () => {

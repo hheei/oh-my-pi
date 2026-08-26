@@ -425,7 +425,7 @@
 ### Changed
 
 - The TODO HUD now closes the last stage with a real tree connector and no longer draws an empty `└────` elbow after the list.
-- Grouped Read usage now aligns with the group title instead of nesting under the last file path.
+- Grouped Read usage sits on its own line after the file tree, aligned with the tool title rather than nested under the last path.
 
 ## [18.0.6] - 2026-08-26
 
