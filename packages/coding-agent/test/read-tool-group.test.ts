@@ -3,11 +3,13 @@ import * as path from "node:path";
 import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { getDefault } from "@oh-my-pi/pi-coding-agent/config/settings-schema";
+import { formatGroupedReadDisplayPath } from "@oh-my-pi/pi-coding-agent/modes/components/grouped-read-path";
 import {
 	ReadToolGroupComponent,
 	readArgsCollapseIntoGroup,
 } from "@oh-my-pi/pi-coding-agent/modes/components/read-tool-group";
 import * as themeModule from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { visibleWidth } from "@oh-my-pi/pi-tui";
 
 function extractLinkUris(text: string): string[] {
 	return [...text.matchAll(/\x1b\]8;[^;]*;([^\x1b]+)\x1b\\/g)].map(match => match[1]!);
@@ -154,7 +156,7 @@ describe("ReadToolGroupComponent", () => {
 		expect(lines[parallelUsageIndices[0]!]?.startsWith(" ")).toBe(false);
 	});
 
-	it("compacts grouped child paths to the last two segments", () => {
+	it("drops the fewest leading path segments that still fit", () => {
 		const component = new ReadToolGroupComponent();
 		const onePath = path.resolve(
 			"/home/chlo/.herdr/worktrees/oh-my-pi/feat-read-usage-title-align/packages/coding-agent/src/modes/components/grouped-read-usage-prefix.ts",
@@ -172,13 +174,27 @@ describe("ReadToolGroupComponent", () => {
 		component.updateResult({ content: [{ type: "text", text: "two" }] }, false, "read-two");
 		component.updateResult({ content: [{ type: "text", text: "three" }] }, false, "read-three");
 
-		const plain = Bun.stripANSI(component.render(80).join("\n"));
+		const treePrefix = `   ${themeModule.theme.tree.branch} `;
+		const lastPrefix = `   ${themeModule.theme.tree.last} `;
+		const narrowBudget = 80 - visibleWidth(treePrefix);
+		const lastBudget = 80 - visibleWidth(lastPrefix);
+		const narrow = Bun.stripANSI(component.render(80).join("\n"));
+		const wide = Bun.stripANSI(component.render(200).join("\n"));
 
-		expect(plain).toContain(`${themeModule.theme.tree.branch} …/components/grouped-read-usage-prefix.ts`);
-		expect(plain).toContain(`${themeModule.theme.tree.branch} …/components/read-tool-group.ts:688-710`);
-		expect(plain).toContain(`${themeModule.theme.tree.last} …/coding-agent/CHANGELOG.md:1-10`);
-		expect(plain).not.toContain(".herdr/worktrees");
-		expect(plain.split("\n").filter(line => line.includes("grouped-read-usage-prefix.ts"))).toHaveLength(1);
+		expect(wide).toContain(".herdr/worktrees");
+		expect(wide.split("\n").filter(line => line.includes("grouped-read-usage-prefix.ts"))).toHaveLength(1);
+
+		expect(narrow).not.toContain(".herdr/worktrees");
+		expect(narrow).toContain(
+			`${themeModule.theme.tree.branch} ${formatGroupedReadDisplayPath(onePath, narrowBudget)}`,
+		);
+		expect(narrow).toContain(
+			`${themeModule.theme.tree.branch} ${formatGroupedReadDisplayPath(twoPath, narrowBudget - visibleWidth(":688-710"))}:688-710`,
+		);
+		expect(narrow).toContain(
+			`${themeModule.theme.tree.last} ${formatGroupedReadDisplayPath(threePath, lastBudget - visibleWidth(":1-10"))}:1-10`,
+		);
+		expect(narrow.split("\n").filter(line => line.includes("grouped-read-usage-prefix.ts"))).toHaveLength(1);
 	});
 
 	it("splits a single selector-delimited read argument into child rows", () => {

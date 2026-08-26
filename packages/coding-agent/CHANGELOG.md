@@ -425,7 +425,7 @@
 ### Changed
 
 - The TODO HUD now closes the last stage with a real tree connector and no longer draws an empty `└────` elbow after the list.
-- Grouped Read usage sits flush left after a blank line, and long child paths compact to `…/dir/file`.
+- Grouped Read usage sits flush left after a blank line. Overlong child paths drop the fewest leading segments needed to fit, shown as `…/rest/file`.
 
 ## [18.0.6] - 2026-08-26
 
