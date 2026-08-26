@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { getDefault } from "@oh-my-pi/pi-coding-agent/config/settings-schema";
+import { GROUPED_READ_USAGE_PREFIX } from "@oh-my-pi/pi-coding-agent/modes/components/grouped-read-usage-prefix";
 import {
 	ReadToolGroupComponent,
 	readArgsCollapseIntoGroup,
@@ -95,7 +96,7 @@ describe("ReadToolGroupComponent", () => {
 		expect(plain).not.toContain(`${themeModule.theme.tree.last} ${themeModule.theme.status.enabled}`);
 	});
 
-	it("nests one usage row beneath the last path from each read-only turn", () => {
+	it("aligns each turn's usage row with the group column after the last path it covers", () => {
 		const component = new ReadToolGroupComponent();
 		const onePath = path.resolve("/tmp/one.ts");
 		const twoPath = path.resolve("/tmp/two.ts");
@@ -142,11 +143,14 @@ describe("ReadToolGroupComponent", () => {
 			.filter(index => index >= 0);
 
 		expect(firstUsageIndex).toBe(onePathIndex + 1);
-		expect(lines[firstUsageIndex]?.startsWith(`   ${themeModule.theme.tree.vertical}  `)).toBe(true);
+		expect(lines[firstUsageIndex]?.startsWith(GROUPED_READ_USAGE_PREFIX)).toBe(true);
+		expect(lines[firstUsageIndex]?.includes(themeModule.theme.tree.vertical)).toBe(false);
+		expect(lines[firstUsageIndex]?.startsWith(`${GROUPED_READ_USAGE_PREFIX}   `)).toBe(false);
 		expect(twoPathIndex).toBeGreaterThan(firstUsageIndex);
 		expect(threePathIndex).toBeGreaterThan(twoPathIndex);
 		expect(parallelUsageIndices).toEqual([threePathIndex + 1]);
-		expect(lines[parallelUsageIndices[0]!]?.startsWith("      ")).toBe(true);
+		expect(lines[parallelUsageIndices[0]!]?.startsWith(GROUPED_READ_USAGE_PREFIX)).toBe(true);
+		expect(lines[parallelUsageIndices[0]!]?.startsWith(`${GROUPED_READ_USAGE_PREFIX}   `)).toBe(false);
 	});
 
 	it("splits a single selector-delimited read argument into child rows", () => {
