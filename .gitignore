@@ -93,3 +93,13 @@ packages/coding-agent/bench/boot-baseline.json
 /.bazelrc.user
 
 .parity/
+# Pix Agent
+.pi/
+.pi-lens/
+
+# Fork-local agent overlays and environment variants
+AGENTS.local.md
+AGENTS.override.md
+.env.local
+.env.*.local
+.agents/
