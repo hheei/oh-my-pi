@@ -8,7 +8,8 @@ import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../tool
 import { PREVIEW_LIMITS, shortenPath } from "../../tools/render-utils";
 import { fileHyperlink, renderCodeCell, tryResolveInternalUrlSync } from "../../tui";
 import { canonicalizeMessage } from "../../utils/thinking-display";
-import { appendGroupedReadUsageLines, GROUPED_READ_USAGE_PREFIX } from "./grouped-read-usage-prefix";
+import { formatGroupedReadDisplayPath } from "./grouped-read-path";
+import { appendGroupedReadUsageLines } from "./grouped-read-usage-prefix";
 import type { ToolExecutionHandle } from "./tool-execution";
 import { formatUsageRow } from "./usage-row";
 
@@ -480,7 +481,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	/**
 	 * Attach one request's usage after the last visible read call from that
 	 * request. Parallel reads share one row rather than duplicating request totals.
-	 * Layout is the fork-owned blank line plus title-column prefix from
+	 * Layout is the fork-owned blank line plus flush-left usage from
 	 * {@link appendGroupedReadUsageLines}.
 	 */
 	attachUsage(
@@ -704,10 +705,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		appendGroupedReadUsageLines(
 			lines,
 			usageRows.map(usageRow =>
-				theme.fg(
-					"dim",
-					`${GROUPED_READ_USAGE_PREFIX}${formatUsageRow(usageRow.usage, usageRow.durationMs, usageRow.ttftMs, usageRow.timestamp, usageRow.turnElapsedMs)}`,
-				),
+				theme.fg("dim", formatUsageRow(usageRow.usage, usageRow.durationMs, usageRow.ttftMs, usageRow.timestamp, usageRow.turnElapsedMs)),
 			),
 		);
 	}
@@ -776,7 +774,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		const split = splitPathAndSel(value);
 		const selectorSuffix = split.sel ? `:${split.sel}` : "";
 		const baseValue = split.sel ? split.path : value;
-		const filePath = shortenPath(baseValue);
+		const filePath = formatGroupedReadDisplayPath(baseValue);
 		let pathDisplay = filePath ? theme.fg("accent", filePath) : theme.fg("toolOutput", "…");
 		if (filePath && options.linkPath) {
 			const linkOptions = options.line !== undefined ? { line: options.line } : undefined;
@@ -786,7 +784,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 			pathDisplay += theme.fg("accent", selectorSuffix);
 		}
 		if (options.correctedFrom) {
-			pathDisplay += theme.fg("dim", ` (corrected from ${shortenPath(options.correctedFrom)})`);
+			pathDisplay += theme.fg("dim", ` (corrected from ${formatGroupedReadDisplayPath(options.correctedFrom)})`);
 		}
 		pathDisplay += this.#formatConflictBadge(options.conflictCount);
 		return pathDisplay;

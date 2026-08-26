@@ -3,7 +3,6 @@ import * as path from "node:path";
 import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { getDefault } from "@oh-my-pi/pi-coding-agent/config/settings-schema";
-import { GROUPED_READ_USAGE_PREFIX } from "@oh-my-pi/pi-coding-agent/modes/components/grouped-read-usage-prefix";
 import {
 	ReadToolGroupComponent,
 	readArgsCollapseIntoGroup,
@@ -96,7 +95,7 @@ describe("ReadToolGroupComponent", () => {
 		expect(plain).not.toContain(`${themeModule.theme.tree.last} ${themeModule.theme.status.enabled}`);
 	});
 
-	it("places each turn's usage on a title-column line after a blank separator", () => {
+	it("places each turn's usage flush left after a blank separator", () => {
 		const component = new ReadToolGroupComponent();
 		const onePath = path.resolve("/tmp/one.ts");
 		const twoPath = path.resolve("/tmp/two.ts");
@@ -144,15 +143,42 @@ describe("ReadToolGroupComponent", () => {
 
 		expect(lines[onePathIndex + 1]?.trim()).toBe("");
 		expect(firstUsageIndex).toBe(onePathIndex + 2);
-		expect(lines[firstUsageIndex]?.startsWith(GROUPED_READ_USAGE_PREFIX)).toBe(true);
-		expect(lines[firstUsageIndex]?.startsWith(`${GROUPED_READ_USAGE_PREFIX} `)).toBe(false);
+		expect(lines[firstUsageIndex]?.startsWith("2026-01-02")).toBe(true);
+		expect(lines[firstUsageIndex]?.startsWith(" ")).toBe(false);
 		expect(lines[firstUsageIndex]?.includes(themeModule.theme.tree.vertical)).toBe(false);
 		expect(twoPathIndex).toBeGreaterThan(firstUsageIndex);
 		expect(threePathIndex).toBeGreaterThan(twoPathIndex);
 		expect(lines[threePathIndex + 1]?.trim()).toBe("");
 		expect(parallelUsageIndices).toEqual([threePathIndex + 2]);
-		expect(lines[parallelUsageIndices[0]!]?.startsWith(GROUPED_READ_USAGE_PREFIX)).toBe(true);
-		expect(lines[parallelUsageIndices[0]!]?.startsWith(`${GROUPED_READ_USAGE_PREFIX} `)).toBe(false);
+		expect(lines[parallelUsageIndices[0]!]?.startsWith("2026-01-02")).toBe(true);
+		expect(lines[parallelUsageIndices[0]!]?.startsWith(" ")).toBe(false);
+	});
+
+	it("compacts grouped child paths to the last two segments", () => {
+		const component = new ReadToolGroupComponent();
+		const onePath = path.resolve(
+			"/home/chlo/.herdr/worktrees/oh-my-pi/feat-read-usage-title-align/packages/coding-agent/src/modes/components/grouped-read-usage-prefix.ts",
+		);
+		const twoPath = path.resolve(
+			"/home/chlo/.herdr/worktrees/oh-my-pi/feat-read-usage-title-align/packages/coding-agent/src/modes/components/read-tool-group.ts",
+		);
+		const threePath = path.resolve(
+			"/home/chlo/.herdr/worktrees/oh-my-pi/feat-read-usage-title-align/packages/coding-agent/CHANGELOG.md",
+		);
+		component.updateArgs({ path: onePath }, "read-one");
+		component.updateArgs({ path: `${twoPath}:688-710` }, "read-two");
+		component.updateArgs({ path: `${threePath}:1-10` }, "read-three");
+		component.updateResult({ content: [{ type: "text", text: "one" }] }, false, "read-one");
+		component.updateResult({ content: [{ type: "text", text: "two" }] }, false, "read-two");
+		component.updateResult({ content: [{ type: "text", text: "three" }] }, false, "read-three");
+
+		const plain = Bun.stripANSI(component.render(80).join("\n"));
+
+		expect(plain).toContain(`${themeModule.theme.tree.branch} …/components/grouped-read-usage-prefix.ts`);
+		expect(plain).toContain(`${themeModule.theme.tree.branch} …/components/read-tool-group.ts:688-710`);
+		expect(plain).toContain(`${themeModule.theme.tree.last} …/coding-agent/CHANGELOG.md:1-10`);
+		expect(plain).not.toContain(".herdr/worktrees");
+		expect(plain.split("\n").filter(line => line.includes("grouped-read-usage-prefix.ts"))).toHaveLength(1);
 	});
 
 	it("splits a single selector-delimited read argument into child rows", () => {
