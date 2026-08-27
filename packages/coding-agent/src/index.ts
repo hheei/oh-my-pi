@@ -23,6 +23,7 @@ export * from "./extensibility/custom-tools";
 export type * from "./extensibility/extensions";
 // Extension types and utilities
 export * from "./extensibility/extensions";
+export { getPluginSettings } from "./extensibility/plugins/loader";
 // Hook system types (legacy re-export)
 // Skills
 export * from "./extensibility/skills";
@@ -34,6 +35,7 @@ export * from "./main";
 // Run modes for programmatic SDK usage
 export * from "./modes";
 export * from "./modes/components";
+export { CustomEditor } from "./modes/components/custom-editor";
 // Theme utilities for custom tools
 export * from "./modes/theme/theme";
 // SDK for programmatic usage

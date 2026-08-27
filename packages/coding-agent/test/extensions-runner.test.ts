@@ -2310,6 +2310,7 @@ describe("ExtensionRunner", () => {
 					select,
 					confirm: async () => false,
 					input: async () => undefined,
+					editor: async () => undefined,
 					notify: () => {},
 					onTerminalInput: () => () => {},
 					setStatus: () => {},
@@ -2322,7 +2323,7 @@ describe("ExtensionRunner", () => {
 					pasteToEditor: () => {},
 					setEditorText: () => {},
 					getEditorText: () => "",
-					editor: async () => undefined,
+					getEditorComponent: () => undefined,
 					addAutocompleteProvider: () => {},
 					setEditorComponent: () => {},
 					get theme() {
