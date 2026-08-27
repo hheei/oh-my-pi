@@ -1,0 +1,76 @@
+name: Publish @hheei/oh-my-pi
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/coding-agent/package.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Validate and publish
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4"
+
+      - name: Set up Node and npm registry
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Ensure npm supports trusted publishing
+        run: npm install -g npm@11.17.0
+
+      - name: Install repository tooling
+        run: bun install --frozen-lockfile
+
+      - name: Check coding agent
+        working-directory: packages/coding-agent
+        run: bun run check
+
+      - name: Publish fork package
+        working-directory: packages/coding-agent
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_name='@hheei/oh-my-pi'
+          version="$(node -p "require('./package.json').version")"
+          if npm view "$package_name@$version" version >/dev/null 2>&1; then
+            echo "$package_name@$version is already published"
+            exit 0
+          fi
+
+          backup="$(mktemp)"
+          publish_dir="$RUNNER_TEMP/omp-publish"
+          mkdir -p "$publish_dir"
+          cp package.json "$backup"
+          restore() {
+            cp "$backup" package.json
+            rm -f "$backup"
+          }
+          trap restore EXIT
+
+          # Keep source package identity and workspace lockfile unchanged; only
+          # the packed npm manifest uses the fork's public package name.
+          npm pkg set name="$package_name" bin.omp='dist/cli.js'
+          npm pkg set repository.type='git' repository.url='git+https://github.com/hheei/oh-my-pi.git' repository.directory='packages/coding-agent'
+          npm pkg delete fork
+          bun pm pack --quiet --destination "$publish_dir"
+          tarballs=("$publish_dir"/*.tgz)
+          test "${#tarballs[@]}" -eq 1
+          npm publish "${tarballs[0]}" --access public
