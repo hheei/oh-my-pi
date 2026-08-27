@@ -165,7 +165,6 @@ import { type PlanApprovalDetails, resolveApprovedPlan } from "../plan-mode/appr
 import { listPlanFiles, readPlanFile } from "../plan-mode/plan-files";
 import { loadOverallPlanReference } from "../plan-mode/plan-handoff";
 import type { PlanModeState } from "../plan-mode/state";
-import { withPlanModeUserLanguage } from "../plan-mode/user-language";
 import goalModeContextPrompt from "../prompts/goals/goal-mode-context.md" with { type: "text" };
 import goalTodoContextPrompt from "../prompts/goals/goal-todo-context.md" with { type: "text" };
 import autoContinuePrompt from "../prompts/system/auto-continue.md" with { type: "text" };
@@ -5698,21 +5697,19 @@ export class AgentSession {
 		// Capability gates, not the visible surface: a Code Mode partition keeps
 		// `task` and `ask` callable through the eval bridge after demoting them.
 		const capableToolNames = this.getEnabledToolNames();
-		const content = withPlanModeUserLanguage(
-			prompt.render(planModeActivePrompt, {
-				planFilePath: displayPlanPath,
-				planExists,
-				askToolName: "ask",
-				writeToolName: "write",
-				editToolName: "edit",
-				askAvailable: capableToolNames.includes("ask"),
-				taskAvailable: capableToolNames.includes("task"),
-				isHashlineEditMode: this.#resolveActiveEditMode() === "hashline",
-				reentry: state.reentry ?? false,
-				iterative: state.workflow === "iterative",
-				scoutAvailable: this.#isScoutAvailable(),
-			}),
-		);
+		const content = prompt.render(planModeActivePrompt, {
+			planFilePath: displayPlanPath,
+			planExists,
+			askToolName: "ask",
+			writeToolName: "write",
+			editToolName: "edit",
+			askAvailable: capableToolNames.includes("ask"),
+			taskAvailable: capableToolNames.includes("task"),
+			isHashlineEditMode: this.#resolveActiveEditMode() === "hashline",
+			reentry: state.reentry ?? false,
+			iterative: state.workflow === "iterative",
+			scoutAvailable: this.#isScoutAvailable(),
+		});
 
 		return {
 			role: "custom",

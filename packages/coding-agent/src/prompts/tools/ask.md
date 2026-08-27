@@ -6,6 +6,7 @@ Ask user for clarification/input during task execution.
 
 <instruction>
 - `recommended: <index>` marks default (0-indexed); " (Recommended)" added automatically.
+- Write each `question`, `header`, option `label`, and `description` in the same language as the user's request; examples are format-only.
 - Use `questions` for related questions, not one at a time.
 - Set `multi: true` on a question to allow multiple selections.
 - Short option labels; explanatory tradeoffs in `description`, not labels.

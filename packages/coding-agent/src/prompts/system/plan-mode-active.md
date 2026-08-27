@@ -80,6 +80,7 @@ New request primary; existing plan reference only. NEVER reconcile old plan whil
 ## Plan contents
 
 Scannable markdown; depth follows change: one-file fix → few bullets; cross-cutting change → ordered behavior steps.
+Write the plan body in the same language as the user's request. Keep the English section headings below; paths, symbols, and commands stay verbatim.
 
 - **Context** — literal ask, need, intended end state; 2–4 sentences. Every requested outcome maps to a step; add nothing beyond ask.
 - **Approach** — load-bearing ordered change steps. Order for a building tree and passing existing tests after each; state dependencies and independencies. Group by behavior, NEVER file. Each step:
