@@ -39,6 +39,10 @@ jobs:
       - name: Install repository tooling
         run: bun install --frozen-lockfile
 
+      - name: Build native addon
+        working-directory: packages/natives
+        run: bun run build
+
       - name: Check coding agent
         working-directory: packages/coding-agent
         run: bun run check
