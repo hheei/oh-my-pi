@@ -1,0 +1,13 @@
+{
+  "name": "@hheei/omp-enhance",
+  "version": "0.1.0",
+  "description": "Optional enhancements for Oh My Pi, including %skill references",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {"check": "biome check . --no-errors-on-unmatched && tsgo -p tsconfig.json --noEmit", "test": "bun test src"},
+  "omp": {"extensions": ["./src/index.ts"], "settings": {"enabled": {"type":"boolean","default":true,"description":"Enable %skill references"},"maxSuggestions":{"type":"number","default":50,"min":1,"max":50,"step":1,"description":"Maximum number of %skill suggestions"}}},
+  "keywords": ["omp", "omp-extension", "skill", "autocomplete"],
+  "license": "MIT",
+  "repository": {"type":"git","url":"git+https://github.com/hheei/oh-my-pi.git","directory":"packages/hepi/omp-enhance"},
+  "peerDependencies": {"@oh-my-pi/pi-coding-agent":"*","@oh-my-pi/pi-tui":"*"}
+}
