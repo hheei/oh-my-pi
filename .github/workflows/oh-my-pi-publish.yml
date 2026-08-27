@@ -37,12 +37,7 @@ jobs:
         run: npm install -g npm@11.17.0
 
       - name: Install repository tooling
-        run: |
-          # bunfig.toml pins a 3-day npm minimumReleaseAge. Catalog versions
-          # also exist on npm and are still too new, so install fails even
-          # though the lockfile points at this workspace checkout.
-          sed -i 's/^minimumReleaseAge = 259200/minimumReleaseAge = 0/' bunfig.toml
-          bun install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Build native addon
         working-directory: packages/natives
