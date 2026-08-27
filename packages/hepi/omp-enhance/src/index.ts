@@ -13,9 +13,9 @@ export default function percentSkill(pi: ExtensionAPI): void {
 	const commands = (): readonly SlashCommandInfo[] => pi.getCommands();
 	const load = async (cwd: string) => {
 		try {
-      config = normalizeConfig(await getPluginSettings("@hheei/omp-enhance", cwd));
-    } catch (error) {
-      pi.logger.warn("Failed to load omp-enhance settings; using defaults", { error: String(error) });
+			config = normalizeConfig(await getPluginSettings("@hheei/omp-enhance", cwd));
+		} catch (error) {
+			pi.logger.warn("Failed to load omp-enhance settings; using defaults", { error: String(error) });
 			config = DEFAULT_CONFIG;
 		}
 	};
@@ -43,6 +43,6 @@ export default function percentSkill(pi: ExtensionAPI): void {
 	pi.on("input", event => {
 		if (event.source !== "interactive" || !active || !config.enabled) return;
 		const text = expandPercentReferences(event.text, commands());
-		return text === undefined ? undefined : { action: "transform", text, ...(event.images ? { images: event.images } : {}) };
+		return text === undefined ? undefined : { text, ...(event.images ? { images: event.images } : {}) };
 	});
 }

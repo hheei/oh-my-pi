@@ -32,7 +32,28 @@ The most capable agent surface that ships. Continuously tuned by real-world use 
 > while we evaluate how open contributions go. Depending on the results, the
 > vouch system may return.
 
-## Install
+## Install this fork
+
+**npm (recommended)**
+
+This fork publishes the `omp` command as `@hheei/oh-my-pi`. Bun is required at
+runtime (`>= 1.3.14`).
+
+```sh
+npm install -g @hheei/oh-my-pi
+omp --version
+```
+
+**Bun**
+
+```sh
+bun install -g @hheei/oh-my-pi
+```
+
+The commands below install upstream distributions and may not include this
+fork's changes.
+
+### Upstream distributions
 
 **macOS · Linux**
 
@@ -48,7 +69,7 @@ curl -fsSL https://omp.sh/install | sh
 brew install can1357/tap/omp
 ```
 
-**Bun (recommended)**
+**Bun**
 
 ```sh
 bun install -g @oh-my-pi/pi-coding-agent
@@ -93,7 +114,42 @@ mise use -g github:can1357/oh-my-pi
 
 macOS · Linux · Windows · bun ≥ 1.3.14
 
-### Shell completions
+## Plugins
+
+### `@hheei/omp-optimizer`
+
+Install the published plugin through OMP's npm plugin manager:
+
+```sh
+omp install @hheei/omp-optimizer
+```
+
+`omp-optimizer` adds prompt-style controls, RTK shell rewriting, Traditional-to-
+Simplified Chinese input conversion, and malformed edit-guard protection behind
+one `/optimizer` panel. See the [plugin README](packages/hepi/omp-optimizer/README.md)
+for the tool guide, controls, persistence, and troubleshooting.
+
+Check plugin state with:
+
+```sh
+omp plugin list
+omp plugin doctor
+```
+
+Nerd Font is optional; it is only needed for the optimizer status icons.
+
+### `@hheei/omp-enhance`
+
+Install optional OMP enhancements:
+
+```sh
+omp install @hheei/omp-enhance
+```
+
+`%skill-name` completion and skill references are one available feature. See the
+[plugin README](packages/hepi/omp-enhance/README.md) for usage and settings.
+
+## Shell completions
 
 `omp` generates its own completion scripts for **bash**, **zsh**, and **fish** from the live command/flag metadata, so they never drift from the actual CLI. Subcommands, flags, and enum values complete statically; model names (`--model`, `--smol`, `--slow`, `--plan`) resolve against the bundled model catalog and `--resume` against your on-disk sessions.
 

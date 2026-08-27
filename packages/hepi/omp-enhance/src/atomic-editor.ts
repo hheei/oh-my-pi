@@ -23,7 +23,16 @@ export function createPercentAtomicEditor(editor: CustomEditor, commands: () => 
 		const cursor = editor.getCursor();
 		const found = action ? span(editor.getLines()[cursor.line] ?? "", cursor.col, action, commands()) : undefined;
 		if (!found) return handle(data);
-		const count = action === "left" ? cursor.col - found.start : action === "right" ? found.end - cursor.col : found.end - found.start;
+		if (action === "backspace" || action === "delete") {
+			const previous = editor.atomicTokenPattern;
+			editor.atomicTokenPattern = /(?<=^|[\s([{])%[A-Za-z][A-Za-z0-9-]*(?=$|[^A-Za-z0-9:-])/g;
+			try {
+				return handle(data);
+			} finally {
+				editor.atomicTokenPattern = previous;
+			}
+		}
+		const count = action === "left" ? cursor.col - found.start : found.end - cursor.col;
 		for (let i = 0; i < count; i++) handle(data);
 	};
 	return editor;
