@@ -1,7 +1,7 @@
 {
 	"name": "omp-optimizer",
 	"version": "0.1.0",
-	"description": "Token-optimization extension for Oh My Pi",
+	"description": "Token-optimization and Traditional-to-Simplified Chinese extension for Oh My Pi",
 	"type": "module",
 	"main": "src/index.ts",
 	"scripts": {
@@ -11,12 +11,15 @@
 	"omp": {
 		"extensions": ["./src/index.ts"]
 	},
-	"keywords": ["omp", "omp-extension", "optimizer", "caveman", "rtk", "ponytail"],
+	"keywords": ["omp", "omp-extension", "optimizer", "caveman", "rtk", "ponytail", "t2s", "traditional-chinese"],
 	"license": "MIT",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/hheei/oh-my-pi.git",
 		"directory": "packages/hepi/omp-optimizer"
+	},
+	"dependencies": {
+		"opencc-js": "^1.4.0"
 	},
 	"peerDependencies": {
 		"@oh-my-pi/pi-coding-agent": "*",

@@ -2,7 +2,6 @@
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
-cd "$repo_root"
 
 require_bun() {
 	if ! command -v bun >/dev/null 2>&1; then
@@ -12,20 +11,20 @@ require_bun() {
 }
 
 dependency_files() {
-	for file in package.json packages/*/package.json python/robomp/web/package.json bun.lock bunfig.toml .npmrc; do
+	for file in "$repo_root/package.json" "$repo_root"/packages/*/package.json "$repo_root/python/robomp/web/package.json" "$repo_root/bun.lock" "$repo_root/bunfig.toml" "$repo_root/.npmrc"; do
 		[ -f "$file" ] && printf '%s\n' "$file"
 	done
 }
 
 native_files() {
-	for file in Cargo.toml Cargo.lock rust-toolchain.toml .cargo/config.toml packages/natives/package.json; do
+	for file in "$repo_root/Cargo.toml" "$repo_root/Cargo.lock" "$repo_root/rust-toolchain.toml" "$repo_root/.cargo/config.toml" "$repo_root/packages/natives/package.json"; do
 		[ -f "$file" ] && printf '%s\n' "$file"
 	done
 	for crate in pi-ast pi-iso pi-natives pi-shell pi-voice pi-walker; do
-		[ -f "crates/$crate/Cargo.toml" ] && printf '%s\n' "crates/$crate/Cargo.toml"
-		find "crates/$crate/src" -type f -print 2>/dev/null
+		[ -f "$repo_root/crates/$crate/Cargo.toml" ] && printf '%s\n' "$repo_root/crates/$crate/Cargo.toml"
+		find "$repo_root/crates/$crate/src" -type f -print 2>/dev/null
 	done
-	find packages/natives/scripts -type f -print 2>/dev/null
+	find "$repo_root/packages/natives/scripts" -type f -print 2>/dev/null
 }
 
 fingerprint() {
@@ -35,7 +34,7 @@ fingerprint() {
 }
 
 has_native_addon() {
-	find packages/natives/native -maxdepth 1 -type f -name 'pi_natives*.node' -print -quit 2>/dev/null | grep -q .
+	find "$repo_root/packages/natives/native" -maxdepth 1 -type f -name 'pi_natives*.node' -print -quit 2>/dev/null | grep -q .
 }
 
 read_state() {
@@ -63,12 +62,12 @@ write_state() {
 setup_repo() {
 	if [ "$needs_install" = 1 ]; then
 		echo "==> installing workspace dependencies"
-		bun install --frozen-lockfile
+		bun --cwd="$repo_root" install --frozen-lockfile
 	fi
 
 	if [ "$needs_native" = 1 ]; then
 		echo "==> building native addon"
-		CARGO_INCREMENTAL=1 bun run build:native
+		CARGO_INCREMENTAL=1 bun --cwd="$repo_root" run build:native
 	fi
 
 	write_state
@@ -76,20 +75,47 @@ setup_repo() {
 
 require_bun
 
-state_file=node_modules/.omp-dev-state
+state_file="$repo_root/node_modules/.omp-dev-state"
 deps_fingerprint=$(dependency_files | fingerprint)
 native_fingerprint=$(native_files | fingerprint)
 read_state
 
 needs_install=0
 needs_native=0
-[ -d node_modules ] || needs_install=1
-[ -e node_modules/@oh-my-pi/pi-coding-agent ] || needs_install=1
-[ -e node_modules/@oh-my-pi/pi-natives ] || needs_install=1
+[ -d "$repo_root/node_modules" ] || needs_install=1
+[ -e "$repo_root/node_modules/@oh-my-pi/pi-coding-agent" ] || needs_install=1
+[ -e "$repo_root/node_modules/@oh-my-pi/pi-natives" ] || needs_install=1
 [ "$state_deps" = "$deps_fingerprint" ] || needs_install=1
 has_native_addon || needs_native=1
 [ "$state_native" = "$native_fingerprint" ] || needs_native=1
 
 setup_repo
+optimizer_package=$repo_root/packages/hepi/omp-optimizer
 
-exec bun --cwd=packages/coding-agent src/cli.ts "$@"
+# The development launcher should exercise the checkout's optimizer instead of
+# accidentally loading an older globally installed copy. Keep management
+# commands untouched; only inject the local extension for launch invocations.
+load_local_optimizer=0
+case "${1-}" in
+	"") load_local_optimizer=1 ;;
+	launch)
+		shift
+		set -- launch -e "$optimizer_package" "$@"
+		;;
+	acp|auth-broker|auth-gateway|agents|bench|browser-relay|cleanse|commit|completions|__complete|compress|config|dry-balance|gc|grep|gallery|git|grievances|images|if-bench|install|join|models|plugin|ps|say|share|setup|shell|read|render|ssh|stats|update|usage|tiny-models|token|ttsr|worktree|search)
+		;;
+	-h|--help|--version)
+		;;
+	-*) load_local_optimizer=1 ;;
+	@*) load_local_optimizer=1 ;;
+	*) load_local_optimizer=1 ;;
+esac
+
+if [ "$load_local_optimizer" = 1 ]; then
+	if [ ! -d "$optimizer_package" ]; then
+		echo "error: local optimizer extension not found: $optimizer_package" >&2
+		exit 1
+	fi
+	set -- -e "$optimizer_package" "$@"
+fi
+exec "$repo_root/packages/coding-agent/scripts/omp" "$@"

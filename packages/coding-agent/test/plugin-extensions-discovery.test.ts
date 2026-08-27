@@ -84,6 +84,30 @@ describe("plugin extension discovery", () => {
 		removeSyncWithRetries(tempHome);
 	});
 
+	it("explicit package roots shadow installed plugins with the same package name", async () => {
+		const localDir = path.join(projectDir.path(), "plugin");
+		const localExtension = path.join(localDir, "local.ts");
+		fs.mkdirSync(localDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(localDir, "package.json"),
+			JSON.stringify({
+				name: "@demo/plugin",
+				version: "local",
+				omp: { extensions: ["./local.ts"] },
+			}),
+		);
+		fs.writeFileSync(
+			localExtension,
+			`export default function(pi) { pi.registerCommand("local-plugin-ext", { handler: async () => {} }); }`,
+		);
+
+		const result = await discoverAndLoadExtensions([localDir], projectDir.path());
+
+		expect(result.errors).toHaveLength(0);
+		expect(result.extensions.some(extension => extension.path === localExtension)).toBe(true);
+		expect(result.extensions.some(extension => extension.commands.has("plugin-ext"))).toBe(false);
+	});
+
 	it("loads installed plugin extensions declared in package.json", async () => {
 		const result = await discoverAndLoadExtensions([], projectDir.path());
 		const extension = result.extensions.find(ext => ext.path.endsWith(path.join("dist", "extension.ts")));

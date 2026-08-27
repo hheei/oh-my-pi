@@ -673,6 +673,12 @@ export async function discoverExtensionPaths(
 		}
 	};
 
+	// An explicit package root shadows the installed plugin with the same name;
+	// unrelated ambient plugins remain enabled.
+	const shadowedPluginNames = new Set(
+		configuredPaths.map(configuredPath => path.basename(resolvePath(configuredPath, cwd))),
+	);
+
 	const ambient = options.ambient !== false;
 	if (ambient) {
 		// 1. Discover extension modules via capability API (native .omp/.pi only).
@@ -711,7 +717,7 @@ export async function discoverExtensionPaths(
 
 	// 3. Discover extension entry points from installed plugins.
 	if (ambient) {
-		addPaths(await getAllPluginExtensionPaths(cwd));
+		addPaths(await getAllPluginExtensionPaths(cwd, shadowedPluginNames));
 	}
 
 	// 4. Explicitly configured paths

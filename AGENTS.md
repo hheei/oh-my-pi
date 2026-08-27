@@ -8,7 +8,7 @@ Keep the fork easy to update by preserving the following Git layout:
 - `origin` is the fork and `upstream` is the source repository.
 - `main` tracks `origin/main` and pushes to `origin`; do not repoint it to
   `upstream`.
-- Work on feature branches, for example `git switch -c feat/<short-name> main`.
+- Use a feature branch and worktree for large feature work, for example `git switch -c feat/<short-name> main`. Small features and simple bug fixes MAY stay in the current checkout and branch.
 - Update the fork's main branch with `git fetch upstream --prune`,
   `git merge --ff-only upstream/main`, and `git push origin main` when the
   fast-forward is possible.
@@ -60,6 +60,7 @@ Use this order when extending the fork:
 4. Store fork extensions under `packages/hepi/<extension-name>/`. Use the
    `omp-<name>` naming format for both the directory and the npm package, such
    as `packages/hepi/omp-review/` and package name `omp-review`.
+- When investigating a suspected upstream bug, restore any newly created work branch and do not modify source code or add a fix unless the user explicitly requests implementation. Locate the responsible path and report the observed behavior only.
 
 Each hepi extension should be independently understandable, testable, and
 publishable to npm. Give it its own `package.json`, entrypoint, public-facing
@@ -68,17 +69,12 @@ packages rather than private source paths or another hepi extension's internals;
 keep shared behavior in a separately publishable package when it is genuinely
 needed.
 
-When the user explicitly asks for a code modification, create a short-lived
-work branch from the local `main`, complete and verify the change there, then
-check whether it can be merged into the fork. Do not modify or push `main`
-directly, and do not merge or push without explicit approval. During upstream
-sync, check the relevant issue and upstream history for an equivalent fix. If
-upstream already fixed the bug, drop the redundant local fix commits from an
-unshared work branch instead of carrying both implementations forward; never
-rewrite shared or pushed history without approval.
+- For large feature work, if the session is running inside a Herdr-managed pane (`HERDR_ENV=1`) and Herdr is available, create a new Herdr-managed Git worktree with `herdr worktree create` from the repository's `main` checkout. Otherwise, create a short-lived Git worktree from the local `main` checkout with `git worktree`. Small features and simple bug fixes MAY skip both a new worktree and a new branch. Complete and verify the change in the selected checkout, then check whether it can be merged into the fork. Do not merge or push without explicit approval. During upstream sync, check the relevant issue and upstream history for an equivalent fix. If upstream already fixed the bug, drop the redundant local fix commits from an unshared worktree instead of carrying both implementations forward; never rewrite shared or pushed history without approval.
+- After the change is merged into the fork or abandoned, remove that feature worktree: `herdr worktree remove --workspace <id>` when a Herdr workspace is still attached, otherwise `git worktree remove`. Delete the unshared feature branch if it is no longer needed.
 
-Record issue references, local fixes, upstream-equivalent commits, and dropped
-duplicate fixes in the ignored `.agents/` development memory described below.
+Record resolved project terms in `CONTEXT.md` and durable architectural
+decisions in `docs/adr/`. Keep issue references, local fixes, upstream-
+equivalent commits, and dropped duplicate fixes in the relevant issue or ADR.
 
 ## Local Development Baseline
 
@@ -94,16 +90,19 @@ duplicate fixes in the ignored `.agents/` development memory described below.
 - Use `./scripts/omp` as the fork's single local install-and-run entrypoint; it
   reuses dependency and native build caches when inputs are unchanged.
 
-## Local Development Memory
+## Design Documentation
 
-`.agents/` is ignored machine-local memory for this fork and its cooperating
-agents. Keep a concise, searchable record in `.agents/development-log.md` for
-feature work, bug issue references, upstream sync checks, and local commits
-that were superseded or dropped. For grill-with-docs work, record the topic,
-question, evidence, decision, rejected alternatives, and follow-up in
-`.agents/grill-with-docs.md`.
-Do not store credentials, tokens, session transcripts, or other sensitive data
-there.
+Use the `grill-with-docs` structure for shared design work:
+
+- Keep project vocabulary and resolved domain terms in the root `CONTEXT.md`.
+- Add an ADR under `docs/adr/` only for a hard-to-reverse, surprising decision
+  that involved a real trade-off.
+- In a grill-with-docs session, capture the question, evidence, decision,
+  rejected alternatives, and follow-up in the relevant context or ADR file.
+- Keep implementation details out of `CONTEXT.md`; put them in source,
+  package documentation, or an ADR when the decision itself needs preserving.
+- Do not store credentials, tokens, session transcripts, or other sensitive data
+  in project documentation.
 
 ## Default Context
 
@@ -409,39 +408,3 @@ Test the contract the system exposes — not the easiest internal detail to asse
 - **Never source-grep.** A test that reads an implementation file (`.ts`/`.rs`/build script) and asserts on its _text_ — `expect(src).toContain("someCall()")`, `.toMatch(/import .../)`, `.not.toContain("oldName")`, or "comment must say X" — is banned. It tests how code _looks_, not what it _does_: it breaks on harmless refactors (comment reflow, rename, import reorder) and passes while the behavior is broken. Assert the observable contract instead (run the code, check output/state/error), use the runtime smoke probe for wiring you cannot exercise in-process, and enforce structural invariants (no value-import of X, no self-import) with a type test or an oxlint rule — never a string scan of the source. (Reading a file your code _wrote_ — apply-patch result, generated bundle, temp fixture — and asserting on that output is fine; that is behavior, not a source grep.)
 - Don't add tests for tiny low-risk changes unless they protect a real contract or fix a regression-prone edge case.
 - Prefer focused package-local verification for the changed area.
-
-## Changelog
-
-Location: `packages/*/CHANGELOG.md` (per package).
-
-**Format** — sections under `## [Unreleased]`:
-
-- `### Breaking Changes` (first if present)
-- `### Added`
-- `### Changed`
-- `### Fixed`
-- `### Removed`
-
-**Rules:**
-
-- New entries always go under `## [Unreleased]`.
-- Entries are one line, brief, and user-facing: lead with what the user will see or can now do. Root-cause narration and implementation detail belong in the commit/PR, not the changelog.
-- Never modify already-released sections (e.g., `## [0.12.2]`) — they are immutable.
-- Don't flag changelog section order or formatting in reviews or PRs — `bun run release` runs `fix-changelogs` which normalizes everything automatically.
-
-**Attribution:**
-
-- Internal (from issues): `Fixed foo bar ([#123](https://github.com/can1357/oh-my-pi/issues/123))`.
-- External contributions: `Added feature X ([#456](https://github.com/can1357/oh-my-pi/pull/456) by [@username](https://github.com/username))`.
-
-## Releasing
-
-Release, tag, publish, or deploy commands are not part of ordinary fork
-development. Run them only when the user explicitly asks for a release of this
-fork or an upstream contribution has been accepted and the release process is
-being followed deliberately.
-
-1. Ensure all changes since last release are in each affected package's `[Unreleased]` section.
-2. Run `bun run release`.
-
-The script handles version bump, CHANGELOG finalization, commit, tag, publish, and adding new `[Unreleased]` sections.

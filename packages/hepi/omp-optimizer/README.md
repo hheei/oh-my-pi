@@ -1,7 +1,11 @@
 # omp-optimizer
 
-`omp-optimizer` is an Oh My Pi extension that combines three opt-in tools behind
-one `/optimizer` command:
+`omp-optimizer` is an Oh My Pi extension that combines five tools behind one
+`/optimizer` command:
+
+## Fork provenance
+
+This extension is forked from [`pix-optimizer`](https://github.com/xynogen/pix-mono/tree/main/packages/pix-optimizer) in [`xynogen/pix-mono`](https://github.com/xynogen/pix-mono). It has been adapted for Oh My Pi's public Extension API and does not retain the original pix host integration. The T2S tool is ported from [`@hheei/pi-t2s`](https://github.com/hheei/hepi-mono/tree/main/packages/pi-t2s).
 
 - **Caveman** — injects a terse-output system prompt (`off`, `lite`, `full`,
   `ultra`, `micro`).
@@ -10,6 +14,8 @@ one `/optimizer` command:
   so the model can use OMP's `sudo_run` flow when available.
 - **Ponytail** — injects a minimal-code/YAGNI system prompt (`off`, `lite`,
   `full`, `ultra`).
+- **T2S** — converts interactive Traditional Chinese prose to Simplified Chinese while preserving inline and fenced code (`on`, `off`).
+- **Edit Guard** — when enabled, aborts malformed `apply_patch`/unified-diff `@@` syntax in hashline edits and shell `apply_patch` calls when that tool is unavailable (`on`, `off`).
 
 ## Install and load
 
@@ -33,8 +39,11 @@ For a published package, the manifest uses OMP's `omp.extensions` field:
 
 Run `/optimizer` and use OMP's configured selection keys (normally `↑↓`) to
 move between tools. `Enter` and `Space` cycle the selected value; `Esc` closes
-the panel. The optional `q` shortcut also closes it. In print/RPC mode, the
-command emits a plain status summary instead of opening the interactive panel.
+the panel. The optional `q` shortcut also closes it. T2S and Edit Guard are
+configured from the same panel. Edit Guard is enabled by default: it blocks
+unified-diff syntax in hashline payloads and shell `apply_patch` calls when
+`apply_patch` is not an active tool. In print/RPC mode, the command emits a
+plain status summary instead of opening the interactive panel.
 
 State is persisted by the extension under the active OMP agent directory as
 `optimizer.json`. Session custom entries are also recorded through

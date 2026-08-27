@@ -8,32 +8,33 @@ const tag = (c: string, t: string) => `<${c}>${t}</${c}>`;
 const CV = toolIcon("caveman");
 const RK = toolIcon("rtk");
 const PT = toolIcon("ponytail");
-
+const T2S = toolIcon("t2s");
+const EG = toolIcon("edit-guard");
 describe("renderStatus", () => {
 	it("shows ALL icons in order, accent when enabled", () => {
-		expect(renderStatus({ caveman: true, rtk: true, ponytail: true }, tag)).toBe(
-			`<accent>${CV}</accent>  <accent>${RK}</accent>  <accent>${PT}</accent> `,
+		expect(renderStatus({ caveman: true, rtk: true, ponytail: true, t2s: true, "edit-guard": true }, tag)).toBe(
+			`<accent>${CV}</accent>  <accent>${RK}</accent>  <accent>${PT}</accent>  <accent>${T2S}</accent>  <accent>${EG}</accent> `,
 		);
 	});
 
 	it("dims disabled tools but still shows them", () => {
-		expect(renderStatus({ caveman: false, rtk: true, ponytail: true }, tag)).toBe(
-			`<dim>${CV}</dim>  <accent>${RK}</accent>  <accent>${PT}</accent> `,
+		expect(renderStatus({ caveman: false, rtk: true, ponytail: true, t2s: true, "edit-guard": true }, tag)).toBe(
+			`<dim>${CV}</dim>  <accent>${RK}</accent>  <accent>${PT}</accent>  <accent>${T2S}</accent>  <accent>${EG}</accent> `,
 		);
 	});
 
 	it("all dim when nothing enabled (cell never empty)", () => {
-		expect(renderStatus({}, tag)).toBe(`<dim>${CV}</dim>  <dim>${RK}</dim>  <dim>${PT}</dim> `);
+		expect(renderStatus({}, tag)).toBe(`<dim>${CV}</dim>  <dim>${RK}</dim>  <dim>${PT}</dim>  <dim>${T2S}</dim>  <dim>${EG}</dim> `);
 	});
 
 	it("preserves fixed order regardless of insertion order", () => {
 		expect(renderStatus({ ponytail: true, caveman: true }, tag)).toBe(
-			`<accent>${CV}</accent>  <dim>${RK}</dim>  <accent>${PT}</accent> `,
+			`<accent>${CV}</accent>  <dim>${RK}</dim>  <accent>${PT}</accent>  <dim>${T2S}</dim>  <dim>${EG}</dim> `,
 		);
 	});
 
 	it("uses the optimizer Nerd Font icon catalog", () => {
-		expect([CV, RK, PT]).toEqual(["\u{F0710}", "\u{F04E5}", "\u{F0190}"]);
+		expect([CV, RK, PT, T2S, EG]).toEqual(["\u{F0710}", "\u{F04E5}", "\u{F0190}", "\u{F0AC}", "\u{F132}"]);
 	});
 });
 
@@ -57,8 +58,8 @@ describe("OptimizerStatus", () => {
 		const last = ctx.calls.at(-1);
 		if (!last) throw new Error("no calls");
 		expect(last.key).toBe(STATUS_KEY);
-		// caveman + ponytail still unset (dim), rtk accent.
-		expect(last.text).toBe(`<dim>${CV}</dim>  <accent>${RK}</accent>  <dim>${PT}</dim> `);
+		// caveman + ponytail + edit guard still unset (dim), rtk accent.
+		expect(last.text).toBe(`<dim>${CV}</dim>  <accent>${RK}</accent>  <dim>${PT}</dim>  <dim>${T2S}</dim>  <dim>${EG}</dim> `);
 	});
 
 	it("accumulates state across tools", () => {
@@ -68,7 +69,7 @@ describe("OptimizerStatus", () => {
 		status.set("ponytail", true, ctx as never);
 		const last = ctx.calls.at(-1);
 		if (!last) throw new Error("no calls");
-		expect(last.text).toBe(`<accent>${CV}</accent>  <dim>${RK}</dim>  <accent>${PT}</accent> `);
+		expect(last.text).toBe(`<accent>${CV}</accent>  <dim>${RK}</dim>  <accent>${PT}</accent>  <dim>${T2S}</dim>  <dim>${EG}</dim> `);
 	});
 
 	it("dims an icon when its tool toggles off (cell stays populated)", () => {
@@ -78,6 +79,6 @@ describe("OptimizerStatus", () => {
 		status.set("rtk", false, ctx as never);
 		const last = ctx.calls.at(-1);
 		if (!last) throw new Error("no calls");
-		expect(last.text).toBe(`<dim>${CV}</dim>  <dim>${RK}</dim>  <dim>${PT}</dim> `);
+		expect(last.text).toBe(`<dim>${CV}</dim>  <dim>${RK}</dim>  <dim>${PT}</dim>  <dim>${T2S}</dim>  <dim>${EG}</dim> `);
 	});
 });

@@ -1,22 +1,25 @@
 /**
- * pix-optimizer — token-optimization suite for Pi Coding Agent.
+ * omp-optimizer — token-optimization suite for Oh My Pi.
  *
- * Three tools, combined into one extension + one command:
- *   - caveman:  terse-output system prompt
- *   - rtk:      prefixes shell commands with `rtk` + injects RTK prompt
+ * Five tools, combined into one extension + one command:
+ *   - caveman: terse-output system prompt
+ *   - rtk:     prefixes shell commands with `rtk` + injects RTK prompt
  *   - ponytail: lazy-senior-dev system prompt (minimal code, YAGNI)
+ *   - t2s:    converts interactive Traditional Chinese input to Simplified Chinese
+ *   - edit-guard: blocks unified-diff syntax in hashline edits
  *
- * They share ONE status-bar cell (all three icons always shown — dimmed when
- * off, accented when on; icon style is nerd/unicode/ascii, set via /optimizer)
- * and ONE command (/optimizer — an interactive overlay). index.ts wires
- * lifecycle hooks via each module, then registers the overlay command.
+ * They share ONE status-bar cell (all five icons always shown — dimmed when
+ * off, accented when on) and ONE command (/optimizer — an interactive overlay).
+ * index.ts wires lifecycle hooks via each module, then registers the overlay command.
  */
 
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import { editGuard } from "./edit-guard.ts";
 import { caveman } from "./caveman.ts";
 import { registerOptCommand } from "./opt.ts";
 import { ponytail } from "./ponytail.ts";
 import { rtk } from "./rtk.ts";
+import { t2s } from "./t2s.ts";
 import { type OptimizerHandle, OptimizerStatus, type OptimizerTool } from "./status.ts";
 import { filterModelWarnings } from "./tool-result-filter.ts";
 
@@ -29,6 +32,8 @@ export default function optimizer(pi: ExtensionAPI) {
 		caveman: caveman(pi, status),
 		rtk: rtk(pi, status),
 		ponytail: ponytail(pi, status),
+		t2s: t2s(pi, status),
+		"edit-guard": editGuard(pi, status),
 	};
 
 	registerOptCommand(pi, handles, status);

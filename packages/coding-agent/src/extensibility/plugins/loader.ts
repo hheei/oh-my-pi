@@ -528,13 +528,19 @@ export async function getAllPluginCommandPaths(cwd: string): Promise<string[]> {
 }
 
 /**
- * Get all extension module paths from all enabled plugins.
+ * Get all extension module paths from enabled plugins, excluding explicit-root shadows.
  */
-export async function getAllPluginExtensionPaths(cwd: string): Promise<string[]> {
+export async function getAllPluginExtensionPaths(
+	cwd: string,
+	shadowedPluginNames: ReadonlySet<string> = new Set(),
+): Promise<string[]> {
 	const plugins = await getEnabledPlugins(cwd);
 	const paths: string[] = [];
 
 	for (const plugin of plugins) {
+		const shortName = plugin.name.split("/").pop();
+		if (shadowedPluginNames.has(plugin.name) || (shortName !== undefined && shadowedPluginNames.has(shortName)))
+			continue;
 		paths.push(...resolvePluginExtensionPaths(plugin));
 	}
 
