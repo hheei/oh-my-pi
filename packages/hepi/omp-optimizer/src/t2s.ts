@@ -94,7 +94,7 @@ export function t2s(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle 
 			const saved = entry.data && typeof entry.data === "object" && "level" in entry.data ? entry.data.level : undefined;
 			if (saved === "on" || saved === "off") level = saved;
 		}
-		const saved = loadOptValue("t2s");
+		const saved = await loadOptValue("t2s");
 		if (saved === "on" || saved === "off") level = saved;
 		syncStatus(ctx);
 	});
@@ -106,7 +106,7 @@ export function t2s(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle 
 		if (value !== "on" && value !== "off") return;
 		level = value;
 		pi.appendEntry("t2s-level", { level });
-		saveOptValue("t2s", level);
+		await saveOptValue("t2s", level);
 		syncStatus(ctx);
 		ctx.ui.notify(`T2S ${level === "on" ? "enabled" : "disabled"}`, "info");
 	}

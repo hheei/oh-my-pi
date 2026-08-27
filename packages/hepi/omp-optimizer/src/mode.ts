@@ -84,7 +84,7 @@ export function createMode<L extends string>(
 				level = ((entry.data as { level: L })?.level ?? level) as L;
 			}
 		}
-		const saved = loadOptValue(name);
+		const saved = await loadOptValue(name);
 		if (saved && levels.includes(saved as L)) level = saved as L;
 		syncStatus(ctx);
 	});
@@ -99,7 +99,7 @@ export function createMode<L extends string>(
 		level = resolved;
 
 		pi.appendEntry(customType, { level });
-		saveOptValue(name, level);
+		await saveOptValue(name, level);
 		syncStatus(ctx);
 
 		ctx.ui.notify(config.notify(level), "info");

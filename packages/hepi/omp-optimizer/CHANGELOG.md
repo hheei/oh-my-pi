@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1]
+
+### Changed
+
+- Persist tool settings in OMP plugin settings (`omp-plugins.lock.json`) instead of `optimizer.json`.
+- Persist Edit Guard alongside the other optimizer tools.
+
 ## [Unreleased]
 
 ### Added
