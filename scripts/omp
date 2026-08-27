@@ -91,31 +91,38 @@ has_native_addon || needs_native=1
 
 setup_repo
 optimizer_package=$repo_root/packages/hepi/omp-optimizer
+enhance_package=$repo_root/packages/hepi/omp-enhance
 
-# The development launcher should exercise the checkout's optimizer instead of
-# accidentally loading an older globally installed copy. Keep management
-# commands untouched; only inject the local extension for launch invocations.
-load_local_optimizer=0
+# Checkout hepi extensions shadow same-named globally installed copies.
+# Keep management commands untouched; only inject for launch invocations.
+require_local_hepi() {
+	for pkg in "$optimizer_package" "$enhance_package"; do
+		if [ ! -d "$pkg" ]; then
+			echo "error: local extension not found: $pkg" >&2
+			exit 1
+		fi
+	done
+}
+
+load_local_hepi=0
 case "${1-}" in
-	"") load_local_optimizer=1 ;;
+	"") load_local_hepi=1 ;;
 	launch)
 		shift
-		set -- launch -e "$optimizer_package" "$@"
+		require_local_hepi
+		set -- launch -e "$optimizer_package" -e "$enhance_package" "$@"
 		;;
 	acp|auth-broker|auth-gateway|agents|bench|browser-relay|cleanse|commit|completions|__complete|compress|config|dry-balance|gc|grep|gallery|git|grievances|images|if-bench|install|join|models|plugin|ps|say|share|setup|shell|read|render|ssh|stats|update|usage|tiny-models|token|ttsr|worktree|search)
 		;;
 	-h|--help|--version)
 		;;
-	-*) load_local_optimizer=1 ;;
-	@*) load_local_optimizer=1 ;;
-	*) load_local_optimizer=1 ;;
+	-*) load_local_hepi=1 ;;
+	@*) load_local_hepi=1 ;;
+	*) load_local_hepi=1 ;;
 esac
 
-if [ "$load_local_optimizer" = 1 ]; then
-	if [ ! -d "$optimizer_package" ]; then
-		echo "error: local optimizer extension not found: $optimizer_package" >&2
-		exit 1
-	fi
-	set -- -e "$optimizer_package" "$@"
+if [ "$load_local_hepi" = 1 ]; then
+	require_local_hepi
+	set -- -e "$optimizer_package" -e "$enhance_package" "$@"
 fi
 exec "$repo_root/packages/coding-agent/scripts/omp" "$@"

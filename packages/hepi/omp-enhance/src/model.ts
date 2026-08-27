@@ -53,9 +53,12 @@ export function expandPercentReferences(text: string, commands: readonly SlashCo
 	return changed ? output : undefined;
 }
 export function createPercentProvider(current: AutocompleteProvider, commands: () => readonly SlashCommandInfo[], config: () => PercentConfig): AutocompleteProvider {
+	const percentToken = (lines: readonly string[], line: number, col: number) =>
+		config().enabled ? extractPercentToken(lines, line, col) : undefined;
 	return {
+		...current,
 		async getSuggestions(lines, line, col, signal) {
-			const token = config().enabled ? extractPercentToken(lines, line, col) : undefined;
+			const token = percentToken(lines, line, col);
 			if (!token) return current.getSuggestions(lines, line, col, signal);
 			const items = getPercentSuggestions(commands(), token.query, config().maxSuggestions);
 			return items.length ? { prefix: token.prefix, items } : current.getSuggestions(lines, line, col, signal);
@@ -72,7 +75,16 @@ export function createPercentProvider(current: AutocompleteProvider, commands: (
 			return { lines: next, cursorLine: line, cursorCol: start + insertion.length };
 		},
 		shouldTriggerFileCompletion(lines, line, col) {
-			return config().enabled && extractPercentToken(lines, line, col) ? false : (current.shouldTriggerFileCompletion?.(lines, line, col) ?? true);
+			return percentToken(lines, line, col) ? false : (current.shouldTriggerFileCompletion?.(lines, line, col) ?? true);
 		},
+		getForceFileSuggestions: current.getForceFileSuggestions
+			? async (lines, line, col, signal) =>
+				percentToken(lines, line, col) ? null : current.getForceFileSuggestions!(lines, line, col, signal)
+			: undefined,
+		getInlineHint: current.getInlineHint
+			? (lines, line, col) => (percentToken(lines, line, col) ? null : current.getInlineHint!(lines, line, col))
+			: undefined,
+		trySyncSlashCompletion: current.trySyncSlashCompletion?.bind(current),
+		trySyncInlineReplace: current.trySyncInlineReplace?.bind(current),
 	};
 }
