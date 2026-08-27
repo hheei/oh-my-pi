@@ -2,8 +2,10 @@ name: Publish @hheei/omp-optimizer
 
 on:
   push:
-    tags:
-      - "omp-optimizer-v*"
+    branches:
+      - main
+    paths:
+      - "packages/hepi/omp-optimizer/package.json"
   workflow_dispatch:
 
 permissions:
@@ -41,22 +43,10 @@ jobs:
         working-directory: packages/hepi/omp-optimizer
         run: bun install --no-save --ignore-scripts --omit=peer
 
-      - name: Verify tag matches package version
-        if: startsWith(github.ref, 'refs/tags/')
-        working-directory: packages/hepi/omp-optimizer
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          version="$(node -p "require('./package.json').version")"
-          test "$RELEASE_TAG" = "omp-optimizer-v$version"
-
       - name: Check and test extension
         working-directory: packages/hepi/omp-optimizer
         run: bun run check && bun test src
 
       - name: Publish package
         working-directory: packages/hepi/omp-optimizer
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
+        run: npm publish --access public
