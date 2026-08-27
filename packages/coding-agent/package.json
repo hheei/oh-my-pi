@@ -16,6 +16,7 @@
   },
   "fork": {
     "npmName": "@hheei/oh-my-pi",
+    "npmVersion": "18.0.7",
     "upstream": "can1357/oh-my-pi",
     "upstreamVersion": "18.0.6"
   },
