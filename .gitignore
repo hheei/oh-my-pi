@@ -102,4 +102,3 @@ AGENTS.local.md
 AGENTS.override.md
 .env.local
 .env.*.local
-.agents/

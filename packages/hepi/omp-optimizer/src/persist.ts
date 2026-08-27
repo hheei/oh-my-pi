@@ -7,7 +7,7 @@ import type { OptimizerTool } from "./status.ts";
 
 type OptimizerFileConfig = Partial<Record<OptimizerTool, string>>;
 
-const OPTIMIZER_TOOLS: readonly OptimizerTool[] = ["caveman", "rtk", "ponytail"];
+const OPTIMIZER_TOOLS: readonly OptimizerTool[] = ["caveman", "rtk", "ponytail", "t2s"];
 
 export interface OptimizerStore {
 	load(tool: OptimizerTool): string | undefined;

@@ -24,6 +24,7 @@ interface Overlay {
 interface Driver {
 	feed(data: string): void;
 	runs(): Array<{ tool: string; value: string }>;
+	rows(): readonly string[];
 	closed(): boolean;
 }
 
@@ -46,6 +47,8 @@ async function openOverlay(): Promise<Driver> {
 		caveman: makeHandle("caveman", "off", ["off", "lite", "full", "ultra", "micro"]),
 		rtk: makeHandle("rtk", "off", ["off", "on"]),
 		ponytail: makeHandle("ponytail", "off", ["off", "lite", "full", "ultra"]),
+		t2s: makeHandle("t2s", "on", ["on", "off"]),
+		"edit-guard": makeHandle("edit-guard", "on", ["on", "off"]),
 	};
 
 	let overlay: Overlay | undefined;
@@ -67,9 +70,25 @@ async function openOverlay(): Promise<Driver> {
 			custom: async <T>(
 				factory: (tui: { requestRender(): void }, theme: unknown, keybindings: unknown, done: (value: T) => void) => Overlay,
 			): Promise<T | undefined> => {
-				overlay = factory({ requestRender: () => {} }, {}, undefined, () => {
-					closed = true;
-				});
+				overlay = factory(
+					{ requestRender: () => {} },
+					{
+						bold: (text: string) => text,
+						fg: (_color: string, text: string) => text,
+						boxRound: {
+							topLeft: "╭",
+							topRight: "╮",
+							bottomLeft: "╰",
+							bottomRight: "╯",
+							horizontal: "─",
+							vertical: "│",
+						},
+					},
+					undefined,
+					() => {
+						closed = true;
+					},
+				);
 				return undefined;
 			},
 		},
@@ -82,8 +101,24 @@ async function openOverlay(): Promise<Driver> {
 		feed: data => component.handleInput(data),
 		runs: () => runs,
 		closed: () => closed,
+		rows: () => component.render(80),
 	};
 }
+
+describe("/optimizer layout", () => {
+	it("uses switch-style titled chrome with aligned rows", async () => {
+		const rows = (await openOverlay()).rows();
+		expect(rows).toHaveLength(11);
+		expect(rows[0]).toMatch(/^╭─ .*Optimizer /);
+		expect(rows[1]).toContain("Caveman");
+		expect(rows[5]).toContain("Edit Guard");
+		expect(rows[6]).toMatch(/^│\s+│$/);
+		expect(rows[7]).toContain("help");
+		expect(rows[8]).toMatch(/^│\s+│$/);
+		expect(rows[9]).toContain("Esc close");
+		expect(rows[10]).toMatch(/^╰─+╯$/);
+	});
+});
 
 for (const encoding of ENCODINGS) {
 	describe(`/optimizer SettingsList keys (${encoding})`, () => {
@@ -98,7 +133,7 @@ for (const encoding of ENCODINGS) {
 			const driver = await openOverlay();
 			driver.feed(KEYS.up[encoding]);
 			driver.feed(KEYS.space[encoding]);
-			expect(driver.runs()).toEqual([{ tool: "ponytail", value: "lite" }]);
+			expect(driver.runs()).toEqual([{ tool: "edit-guard", value: "off" }]);
 		});
 
 		it("uses Enter and Space to cycle the selected setting", async () => {
