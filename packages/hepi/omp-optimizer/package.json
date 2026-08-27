@@ -1,5 +1,5 @@
 {
-	"name": "omp-optimizer",
+	"name": "@hheei/omp-optimizer",
 	"version": "0.1.0",
 	"description": "Token-optimization and Traditional-to-Simplified Chinese extension for Oh My Pi",
 	"type": "module",
@@ -15,7 +15,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/hheei/oh-my-pi.git",
+		"url": "git+https://github.com/hheei/oh-my-pi.git",
 		"directory": "packages/hepi/omp-optimizer"
 	},
 	"dependencies": {
