@@ -37,7 +37,12 @@ jobs:
         run: npm install -g npm@11.17.0
 
       - name: Install repository tooling
-        run: bun install --frozen-lockfile
+        run: |
+          # bunfig.toml pins a 3-day npm minimumReleaseAge. Catalog versions
+          # also exist on npm and are still too new, so install fails even
+          # though the lockfile points at this workspace checkout.
+          sed -i 's/^minimumReleaseAge = 259200/minimumReleaseAge = 0/' bunfig.toml
+          bun install --frozen-lockfile
 
       - name: Build native addon
         working-directory: packages/natives
@@ -52,8 +57,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          package_name='@hheei/oh-my-pi'
-          version="$(node -p "require('./package.json').version")"
+          package_name="$(node -p "require('./package.json').fork.npmName")"
+          version="$(node -p "require('./package.json').fork.npmVersion")"
           if npm view "$package_name@$version" version >/dev/null 2>&1; then
             echo "$package_name@$version is already published"
             exit 0
@@ -71,7 +76,7 @@ jobs:
 
           # Keep source package identity and workspace lockfile unchanged; only
           # the packed npm manifest uses the fork's public package name.
-          npm pkg set name="$package_name" bin.omp='dist/cli.js'
+          npm pkg set name="$package_name" version="$version" bin.omp='dist/cli.js'
           npm pkg set repository.type='git' repository.url='git+https://github.com/hheei/oh-my-pi.git' repository.directory='packages/coding-agent'
           npm pkg delete fork
           bun pm pack --quiet --destination "$publish_dir"

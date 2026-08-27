@@ -37,7 +37,9 @@ jobs:
         run: npm install -g npm@11.17.0
 
       - name: Install repository tooling
-        run: bun install --frozen-lockfile
+        run: |
+          sed -i 's/^minimumReleaseAge = 259200/minimumReleaseAge = 0/' bunfig.toml
+          bun install --frozen-lockfile
 
       - name: Install extension dependencies
         working-directory: packages/hepi/omp-enhance
