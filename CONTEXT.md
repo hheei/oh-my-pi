@@ -12,6 +12,11 @@ it free of implementation details.
 - **Upstream robot**: the automated upstream workflow that handles bug issues;
   bug reports should describe reproduction and observed behavior clearly.
 
+## npm distribution
+
+- **Fork CLI package**: `@hheei/oh-my-pi`, exposing the global `omp` command.
+- **Version alignment**: first fork release matches aligned upstream SemVer; fork-only releases increment patch (`18.0.6` → `18.0.7`). The current aligned upstream version is recorded in `packages/coding-agent/package.json` as `fork.upstreamVersion`.
+
 ## Extension
 
 - **hepi extension**: fork-owned functionality that lives under

@@ -1,10 +1,20 @@
-# @oh-my-pi/pi-coding-agent
+# @hheei/oh-my-pi
 
-Core implementation package for the `omp` coding agent in the `oh-my-pi` monorepo.
+Fork npm distribution of the `omp` coding agent. Source lives in this
+repository at `packages/coding-agent`; the published package is
+`@hheei/oh-my-pi` and installs the `omp` command.
+
+## Version alignment
+
+Current fork baseline is upstream `can1357/oh-my-pi` version `18.0.6`.
+The fork uses stable SemVer versions: the first release keeps the aligned
+upstream version, and later fork-only releases increment the patch version
+(`18.0.6` → `18.0.7` → `18.0.8`). Update the `fork.upstreamVersion` field in
+`package.json` whenever the fork is realigned with upstream.
 
 For installation, setup, provider configuration, model roles, slash commands, and full CLI reference, see:
 - [Monorepo README (local)](../../README.md)
-- [Monorepo README (GitHub)](https://github.com/can1357/oh-my-pi#readme)
+- [Monorepo README (GitHub)](https://github.com/hheei/oh-my-pi#readme)
 
 Package-specific references:
 - [CHANGELOG](./CHANGELOG.md)
