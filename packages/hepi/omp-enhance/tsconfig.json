@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.workspace.json",
+  "compilerOptions": {"allowImportingTsExtensions": true},
+  "include": ["src"]
+}
