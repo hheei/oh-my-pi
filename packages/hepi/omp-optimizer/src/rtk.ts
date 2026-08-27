@@ -270,7 +270,7 @@ export function rtk(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle 
 	// availability on session start so the icon reflects reality immediately.
 	pi.on("session_start", async (_event, ctx) => {
 		// Restore the user's on/off choice from disk (survives quit/restart).
-		const saved = loadOptValue("rtk");
+		const saved = await loadOptValue("rtk");
 		if (saved === "on" || saved === "off") enabled = saved === "on";
 		const probe = await checkRtkAvailability();
 		if (!probe.available && !warnedMissing) {
@@ -293,7 +293,7 @@ export function rtk(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle 
 
 	async function run(value: string, ctx: ExtensionCommandContext): Promise<void> {
 		enabled = value === "on";
-		saveOptValue("rtk", enabled ? "on" : "off");
+		await saveOptValue("rtk", enabled ? "on" : "off");
 
 		await checkRtkAvailability();
 		syncStatus(ctx);

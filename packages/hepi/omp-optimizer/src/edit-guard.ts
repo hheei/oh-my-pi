@@ -64,7 +64,7 @@ export function editGuard(pi: ExtensionAPI, status: OptimizerStatus): OptimizerH
 		if (!isCurrent()) return;
 		interrupted = false;
 	});
-	pi.on("session_start", (_event, ctx) => {
+	pi.on("session_start", async (_event, ctx) => {
 		if (!isCurrent()) return;
 		interrupted = false;
 		pendingReason = undefined;
@@ -73,7 +73,7 @@ export function editGuard(pi: ExtensionAPI, status: OptimizerStatus): OptimizerH
 			const saved = entry.data && typeof entry.data === "object" && "level" in entry.data ? entry.data.level : undefined;
 			if (saved === "on" || saved === "off") level = saved;
 		}
-		const saved = loadOptValue(EDIT_GUARD_TOOL);
+		const saved = await loadOptValue(EDIT_GUARD_TOOL);
 		if (saved === "on" || saved === "off") level = saved;
 		syncStatus(ctx);
 	});
@@ -122,7 +122,7 @@ export function editGuard(pi: ExtensionAPI, status: OptimizerStatus): OptimizerH
 		if (value !== "on" && value !== "off") return;
 		level = value;
 		pi.appendEntry("edit-guard-level", { level });
-		saveOptValue(EDIT_GUARD_TOOL, level);
+		await saveOptValue(EDIT_GUARD_TOOL, level);
 		syncStatus(ctx);
 		ctx.ui.notify(`Edit Guard ${level === "on" ? "enabled" : "disabled"}`, "info");
 	}

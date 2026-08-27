@@ -35,25 +35,42 @@ For a published package, the manifest uses OMP's `omp.extensions` field:
 }
 ```
 
-After publishing, install it through OMP:
+After publishing, install it globally through OMP's npm plugin manager:
 
 ```bash
-./scripts/omp install @hheei/omp-optimizer
+omp install @hheei/omp-optimizer
 ```
 
-## Usage
+## Quick start
 
-Run `/optimizer` and use OMP's configured selection keys (normally `↑↓`) to
-move between tools. `Enter` and `Space` cycle the selected value; `Esc` closes
-the panel. The optional `q` shortcut also closes it. T2S and Edit Guard are
-configured from the same panel. Edit Guard is enabled by default: it blocks
-unified-diff syntax in hashline payloads and shell `apply_patch` calls when
-`apply_patch` is not an active tool. In print/RPC mode, the command emits a
-plain status summary instead of opening the interactive panel.
+Install the OMP package first, then install this plugin:
 
-State is persisted by the extension under the active OMP agent directory as
-`optimizer.json`. Session custom entries are also recorded through
-`pi.appendEntry`, so branch/session navigation can restore the in-session value.
+```bash
+npm install -g @hheei/oh-my-pi
+omp install @hheei/omp-optimizer
+```
+
+Restart `omp`, enter `/optimizer`, and use `↑`/`↓` to select a tool. Press
+`Enter` or `Space` to cycle its value; press `Esc` or `q` to close the panel.
+The status cell shows which tools are active.
+
+### Tool guide
+
+- **Caveman**: choose `off`, `lite`, `full`, `ultra`, or `micro` to control
+  response terseness.
+- **RTK**: when `rtk` is installed, supported bash chains are rewritten to use
+  it. Direct `sudo` segments use OMP's permission flow instead.
+- **Ponytail**: choose a level to inject minimal-code/YAGNI implementation
+  guidance.
+- **T2S**: converts interactive Traditional Chinese prose to Simplified
+  Chinese; inline and fenced code are left unchanged.
+- **Edit Guard**: enabled by default; stops malformed hashline `@@` patches and
+  shell `apply_patch` calls when `apply_patch` is not an active tool.
+
+In print or RPC mode, `/optimizer` prints a status summary instead of opening
+the interactive panel. Settings persist in OMP plugin settings
+(`omp-plugins.lock.json`). Session custom entries restore a tool only when the
+lockfile has no value for it; otherwise the lockfile wins.
 
 ## OMP integration
 
@@ -62,9 +79,9 @@ The implementation uses OMP's public extension APIs and built-in packages:
 - `ExtensionAPI` lifecycle hooks and `appendEntry` for prompt injection and
   session state.
 - `ctx.ui.custom`, `ctx.ui.setStatus`, `ctx.ui.notify`, and the OMP theme for
-  the panel and status bar.
 - `ExtensionAPI.exec` for the RTK availability probe.
-- `@oh-my-pi/pi-utils` for the active agent directory and centralized logging.
+- `@oh-my-pi/pi-utils` `getPluginsLockfile` for persistence in the host plugin
+  lockfile.
 
 No `pix-pretty` or Pi fork compatibility package is required.
 

@@ -1,6 +1,6 @@
 {
 	"name": "@hheei/omp-optimizer",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Token-optimization and Traditional-to-Simplified Chinese extension for Oh My Pi",
 	"type": "module",
 	"main": "src/index.ts",
@@ -9,7 +9,39 @@
 		"test": "bun test src"
 	},
 	"omp": {
-		"extensions": ["./src/index.ts"]
+		"extensions": ["./src/index.ts"],
+		"settings": {
+			"caveman": {
+				"type": "enum",
+				"values": ["off", "lite", "full", "ultra", "micro"],
+				"default": "off",
+				"description": "Terse-output system prompt intensity"
+			},
+			"rtk": {
+				"type": "enum",
+				"values": ["off", "on"],
+				"default": "on",
+				"description": "Rewrite supported bash chains with rtk"
+			},
+			"ponytail": {
+				"type": "enum",
+				"values": ["off", "lite", "full", "ultra"],
+				"default": "off",
+				"description": "Minimal-code / YAGNI system prompt intensity"
+			},
+			"t2s": {
+				"type": "enum",
+				"values": ["on", "off"],
+				"default": "on",
+				"description": "Convert Traditional Chinese interactive input to Simplified Chinese"
+			},
+			"edit-guard": {
+				"type": "enum",
+				"values": ["on", "off"],
+				"default": "on",
+				"description": "Abort malformed hashline @@ patches and unavailable shell apply_patch"
+			}
+		}
 	},
 	"keywords": ["omp", "omp-extension", "optimizer", "caveman", "rtk", "ponytail", "t2s", "traditional-chinese"],
 	"license": "MIT",
