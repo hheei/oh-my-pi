@@ -1,6 +1,6 @@
-# omp-optimizer
+# @hheei/omp-optimizer
 
-`omp-optimizer` is an Oh My Pi extension that combines five tools behind one
+`@hheei/omp-optimizer` is an Oh My Pi extension that combines five tools behind one
 `/optimizer` command:
 
 ## Fork provenance
@@ -33,6 +33,12 @@ For a published package, the manifest uses OMP's `omp.extensions` field:
     "extensions": ["./src/index.ts"]
   }
 }
+```
+
+After publishing, install it through OMP:
+
+```bash
+./scripts/omp install @hheei/omp-optimizer
 ```
 
 ## Usage
