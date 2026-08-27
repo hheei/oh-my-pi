@@ -1,4 +1,4 @@
-import type { Component, OverlayHandle, TUI } from "@oh-my-pi/pi-tui";
+import type { Component, EditorTheme, OverlayHandle, TUI } from "@oh-my-pi/pi-tui";
 import { Container, Spacer, Text } from "@oh-my-pi/pi-tui";
 import type { CollabUiRequestDraft, CollabUiSelectItem } from "@oh-my-pi/pi-wire";
 import { KeybindingsManager } from "../../config/keybindings";
@@ -24,6 +24,7 @@ import type {
 import { getSessionSlashCommands } from "../../extensibility/extensions/get-commands-handler";
 import { AskDialogComponent, boundPromptTitle } from "../../modes/components/ask-dialog";
 import { installExtensionComposerShape } from "../../modes/components/composer-shape-registry";
+import type { CustomEditor } from "../../modes/components/custom-editor";
 import { EditorTopGap } from "../../modes/components/editor-top-gap";
 import { HookEditorComponent } from "../../modes/components/hook-editor";
 import { HookInputComponent } from "../../modes/components/hook-input";
@@ -80,6 +81,9 @@ export class ExtensionUiController {
 	 * call with the same picker/dialog primitives a live tool call would get.
 	 */
 	#toolUIContext: ExtensionUIContext | undefined;
+	#editorComponentFactory:
+		| ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor)
+		| undefined;
 	constructor(private ctx: InteractiveModeContext) {}
 
 	#syncExtensionComposerShapes(): void {
@@ -139,7 +143,11 @@ export class ExtensionUiController {
 			},
 			setFooter: () => {},
 			setHeader: () => {},
-			setEditorComponent: factory => this.ctx.setEditorComponent(factory),
+			setEditorComponent: factory => {
+				this.#editorComponentFactory = factory;
+				this.ctx.setEditorComponent(factory);
+			},
+			getEditorComponent: () => this.#editorComponentFactory,
 			getToolsExpanded: () => this.ctx.toolOutputExpanded,
 			setToolsExpanded: expanded => this.ctx.setToolsExpanded(expanded),
 		};

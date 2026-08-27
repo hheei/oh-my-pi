@@ -406,6 +406,7 @@ const noOpUIContext: ExtensionUIContext = {
 	setTheme: _theme => Promise.resolve({ success: false, error: "UI not available" }),
 	setFooter: () => {},
 	setHeader: () => {},
+	getEditorComponent: () => undefined,
 	setEditorComponent: () => {},
 	getToolsExpanded: () => false,
 	setToolsExpanded: () => {},

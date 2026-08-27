@@ -1021,6 +1021,10 @@ export async function runRpcMode(
 		setEditorComponent(): void {
 			// Custom editor components not supported in RPC mode
 		}
+
+		getEditorComponent() {
+			return undefined;
+		}
 	}
 
 	// Wire up UI context for tool execution (ask tool, etc.) and extensions.

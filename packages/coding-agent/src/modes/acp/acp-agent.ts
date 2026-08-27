@@ -593,6 +593,7 @@ export function createAcpExtensionUiContext(
 			return typeof value === "string" ? value : undefined;
 		},
 		addAutocompleteProvider: () => {},
+		getEditorComponent: () => undefined,
 		setEditorComponent: () => {},
 		get theme() {
 			return theme;

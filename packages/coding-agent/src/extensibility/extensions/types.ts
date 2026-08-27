@@ -340,16 +340,13 @@ export interface ExtensionUIContext {
 	 */
 	addAutocompleteProvider(factory: AutocompleteProviderFactory): void;
 
-	/**
-	 * Set a custom editor component via factory function, or `undefined` to restore the default editor.
-	 *
-	 * The factory must return a {@link CustomEditor} subclass. Plain `EditorComponent`/`Editor`
-	 * instances do not implement the action-keys, escape callbacks, and custom-key-handler surface
-	 * required by interactive mode.
-	 */
+	/** Set a custom editor component via factory function, or `undefined` to restore the default editor. */
 	setEditorComponent(
 		factory: ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor) | undefined,
 	): void;
+
+	/** Get the current custom editor factory, if one is installed. */
+	getEditorComponent(): ((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => CustomEditor) | undefined;
 
 	/** Get the current theme for styling. */
 	readonly theme: Theme;
