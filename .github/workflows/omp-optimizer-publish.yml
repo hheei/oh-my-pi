@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "packages/hepi/omp-optimizer/package.json"
+      - ".github/workflows/omp-optimizer-publish.yml"
   workflow_dispatch:
 
 permissions:
@@ -38,6 +39,10 @@ jobs:
 
       - name: Install repository tooling
         run: bun install --frozen-lockfile
+
+      - name: Build native addon
+        working-directory: packages/natives
+        run: bun run build
 
       - name: Install extension dependencies
         working-directory: packages/hepi/omp-optimizer
