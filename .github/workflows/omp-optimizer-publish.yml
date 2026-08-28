@@ -37,21 +37,40 @@ jobs:
       - name: Ensure npm supports trusted publishing
         run: npm install -g npm@11.17.0
 
+      - name: Skip if already published
+        id: published
+        working-directory: packages/hepi/omp-optimizer
+        run: |
+          set -euo pipefail
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "$name@$version is already published"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install repository tooling
+        if: steps.published.outputs.skip != 'true'
         run: bun install --frozen-lockfile
 
       - name: Build native addon
+        if: steps.published.outputs.skip != 'true'
         working-directory: packages/natives
         run: bun run build
 
       - name: Install extension dependencies
+        if: steps.published.outputs.skip != 'true'
         working-directory: packages/hepi/omp-optimizer
         run: bun install --no-save --ignore-scripts --omit=peer
 
       - name: Check and test extension
+        if: steps.published.outputs.skip != 'true'
         working-directory: packages/hepi/omp-optimizer
         run: bun run check && bun test src
 
       - name: Publish package
+        if: steps.published.outputs.skip != 'true'
         working-directory: packages/hepi/omp-optimizer
         run: npm publish --access public
