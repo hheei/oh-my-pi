@@ -457,7 +457,7 @@ const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.ghost": "👻",
 	"icon.agents": "👥",
 	"icon.job": "⚙",
-	"icon.cache": "💾",
+	"icon.cache": "↻",
 	"icon.cacheMiss": "⊘",
 	"icon.input": "⤵",
 	"icon.output": "⤴",

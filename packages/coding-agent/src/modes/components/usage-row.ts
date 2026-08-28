@@ -42,9 +42,9 @@ export function formatUsageRow(
 	const totalInput = usage.input + usage.cacheWrite;
 	const parts: string[] = [];
 	// Lead with the turn's local wall-clock time (down to the second), log-line style.
-	if (timestamp !== undefined && Number.isFinite(timestamp) && timestamp > 0) {
-		parts.push(formatUsageTimestamp(timestamp));
-	}
+	// if (timestamp !== undefined && Number.isFinite(timestamp) && timestamp > 0) {
+	// 	parts.push(formatUsageTimestamp(timestamp));
+	// }
 	// The delta the operator actually waited, clock-suffixed so it reads apart
 	// from the TTFT figure below (which reuses the same clock icon).
 	// `message.duration` comes from performance.now(), so the combined value is
