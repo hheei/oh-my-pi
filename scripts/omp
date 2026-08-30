@@ -92,11 +92,11 @@ has_native_addon || needs_native=1
 setup_repo
 optimizer_package=$repo_root/packages/hepi/omp-optimizer
 enhance_package=$repo_root/packages/hepi/omp-enhance
-
-# Checkout hepi extensions shadow same-named globally installed copies.
-# Keep management commands untouched; only inject for launch invocations.
+mctx_package=$repo_root/packages/hepi/omp-mctx
+# Checkout HEPI extensions shadow same-named globally installed copies.
+# Keep management commands untouched; only inject local extensions for launches.
 require_local_hepi() {
-	for pkg in "$optimizer_package" "$enhance_package"; do
+	for pkg in "$optimizer_package" "$enhance_package" "$mctx_package"; do
 		if [ ! -d "$pkg" ]; then
 			echo "error: local extension not found: $pkg" >&2
 			exit 1
@@ -110,7 +110,7 @@ case "${1-}" in
 	launch)
 		shift
 		require_local_hepi
-		set -- launch -e "$optimizer_package" -e "$enhance_package" "$@"
+		set -- launch -e "$optimizer_package" -e "$enhance_package" -e "$mctx_package" "$@"
 		;;
 	acp|auth-broker|auth-gateway|agents|bench|browser-relay|cleanse|commit|completions|__complete|compress|config|dry-balance|gc|grep|gallery|git|grievances|images|if-bench|install|join|models|plugin|ps|say|share|setup|shell|read|render|ssh|stats|update|usage|tiny-models|token|ttsr|worktree|search)
 		;;
@@ -123,6 +123,6 @@ esac
 
 if [ "$load_local_hepi" = 1 ]; then
 	require_local_hepi
-	set -- -e "$optimizer_package" -e "$enhance_package" "$@"
+	set -- -e "$optimizer_package" -e "$enhance_package" -e "$mctx_package" "$@"
 fi
 exec "$repo_root/packages/coding-agent/scripts/omp" "$@"
