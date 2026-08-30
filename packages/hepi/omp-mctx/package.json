@@ -44,6 +44,16 @@
 				"type": "boolean",
 				"default": true,
 				"description": "Register ctx_note and session-note nudges. Disable to remove both."
+			},
+			"historianEnabled": {
+				"type": "boolean",
+				"default": true,
+				"description": "Allow historian compaction runs when historianModel is configured."
+			},
+			"historianModel": {
+				"type": "string",
+				"default": "",
+				"description": "Provider/model ID used for historian compaction, for example lmxu/gpt-5.6-sol:high. Empty keeps historian inactive."
 			}
 		}
 	},
