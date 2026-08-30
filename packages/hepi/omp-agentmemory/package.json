@@ -1,0 +1,46 @@
+{
+	"name": "@hheei/omp-agentmemory",
+	"version": "0.1.0",
+	"description": "Durable Memory for Oh My Pi via agentmemory REST. Not MCP.",
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"check": "biome check . --no-errors-on-unmatched && tsgo -p tsconfig.json --noEmit",
+		"test": "bun test src"
+	},
+	"omp": {
+		"extensions": ["./src/index.ts"],
+		"settings": {
+			"enabled": {
+				"type": "boolean",
+				"default": false,
+				"description": "Register Durable Memory tools. Leave off on the daily OMP until Tool Surface is complete."
+			},
+			"url": {
+				"type": "string",
+				"default": "http://127.0.0.1:3111",
+				"description": "agentmemory base URL (no /mcp). AGENTMEMORY_URL overrides."
+			},
+			"secret": {
+				"type": "string",
+				"default": "",
+				"description": "Bearer token. Prefer AGENTMEMORY_SECRET env; do not commit."
+			},
+			"project": {
+				"type": "string",
+				"default": "",
+				"description": "Project name. Empty uses AGENTMEMORY_PROJECT_NAME, git toplevel, or cwd basename."
+			}
+		}
+	},
+	"keywords": ["omp", "omp-extension", "agentmemory", "judy"],
+	"license": "Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/hheei/oh-my-pi.git",
+		"directory": "packages/hepi/omp-agentmemory"
+	},
+	"peerDependencies": {
+		"@oh-my-pi/pi-coding-agent": "*"
+	}
+}
