@@ -6,7 +6,7 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { closeDatabase, openDatabase, resolveDatabasePath } from "#core/features/storage-db";
 import { getMagicContextStorageDir } from "#core/shared/data-path";
 import magicContextPiExtension, { __test } from "../index.ts";
-import { shouldStartOmpMctx } from "./settings.ts";
+import { __setOmpMctxPluginSettingsForTests, shouldStartOmpMctx } from "./settings.ts";
 
 const CORTEXKIT_DB = join(homedir(), ".local/share/cortexkit/magic-context/context.db");
 const HEPI_PI_DB = join(homedir(), ".pi/agent/extensions/pi-mctx/context.db");
@@ -51,6 +51,7 @@ function createCountingPi() {
 afterEach(() => {
 	closeDatabase();
 	__test.clearPiMagicContextActive();
+	__setOmpMctxPluginSettingsForTests(null);
 	for (const [key, value] of Object.entries(savedEnv)) {
 		if (value === undefined) delete process.env[key];
 		else process.env[key] = value;
@@ -116,6 +117,7 @@ describe("omp-mctx factory", () => {
 		process.env.MAGIC_CONTEXT_TEST_DATA_DIR = root;
 		delete process.env.XDG_DATA_HOME;
 		const beforeCortex = fingerprint(CORTEXKIT_DB);
+		__setOmpMctxPluginSettingsForTests({ enabled: false });
 		const { pi, events, tools } = createCountingPi();
 		await magicContextPiExtension(pi);
 		expect(events).toEqual([]);
