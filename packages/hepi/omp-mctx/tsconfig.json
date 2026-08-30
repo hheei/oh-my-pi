@@ -1,0 +1,12 @@
+{
+	"extends": "../../tsconfig.workspace.json",
+	"compilerOptions": {
+		"allowImportingTsExtensions": true,
+		"paths": {
+			"#core/*": ["./src/core/*"],
+			"#host/*": ["./src/host/*"]
+		}
+	},
+	"include": ["src"],
+	"exclude": ["src/handoff"]
+}

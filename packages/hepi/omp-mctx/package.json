@@ -1,0 +1,73 @@
+{
+	"name": "@hheei/omp-mctx",
+	"version": "0.1.0",
+	"description": "OMP Window owner: Magic Context compaction, compartments, ctx_reduce/expand/note; legacy Durable Memory is opt-in.",
+	"type": "module",
+	"main": "src/index.ts",
+	"imports": {
+		"#core/*": {
+			"types": "./src/core/*.ts",
+			"node": "./src/core/*.ts",
+			"bun": "./src/core/*.ts",
+			"default": "./src/core/*.ts"
+		},
+		"#host/*": {
+			"types": "./src/host/*.ts",
+			"node": "./src/host/*.ts",
+			"bun": "./src/host/*.ts",
+			"default": "./src/host/*.ts"
+		}
+	},
+	"scripts": {
+		"check": "tsgo -p tsconfig.json --noEmit",
+		"test": "bun test src/host src/core/shared/data-path.ts src/core/features/fresh-schema.test.ts src/core/features/fail-closed-block.test.ts src/core/features/memory/embedding-local.test.ts src/core/features/memory/embedding-openai-failure.test.ts src/core/hooks/empty-task-output.test.ts src/core/hooks/temporal-awareness.test.ts src/core/hooks/strip-content.test.ts src/core/hooks/format-embed-failure.test.ts src/core/agents/magic-context-prompt.test.ts src/commands/ctx-embed-partial.test.ts src/config/config.test.ts src/core/hooks/lkg-persist.test.ts src/core/hooks/raw-fallback-context-limit.test.ts src/lkg-pi.test.ts"
+	},
+	"omp": {
+		"extensions": ["./src/index.ts"],
+		"settings": {
+			"enabled": {
+				"type": "boolean",
+				"default": false,
+				"description": "Leave off on the daily OMP until Durable Memory is unregistered (ADR-0001)."
+			},
+			"memoryEnabled": {
+				"type": "boolean",
+				"default": false,
+				"description": "Opt in to omp-mctx's legacy durable-memory store. Keep false when @hheei/omp-agentmemory owns Durable Memory."
+			},
+			"searchEnabled": {
+				"type": "boolean",
+				"default": true,
+				"description": "Register ctx_search for session-history retrieval. Disable to remove it from the agent tool surface."
+			},
+			"noteEnabled": {
+				"type": "boolean",
+				"default": true,
+				"description": "Register ctx_note and session-note nudges. Disable to remove both."
+			}
+		}
+	},
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/hheei/oh-my-pi.git",
+		"directory": "packages/hepi/omp-mctx"
+	},
+	"dependencies": {
+		"@cortexkit/subc-client": "0.4.1",
+		"@huggingface/transformers": "^4.1.0",
+		"@jitl/quickjs-singlefile-cjs-release-asyncify": "0.32.0",
+		"@oh-my-pi/omptype": "workspace:*",
+		"ai-tokenizer": "^1.0.6",
+		"better-sqlite3": "^12.4.1",
+		"quickjs-emscripten": "^0.32.0",
+		"zod": "^4.1.8"
+	},
+	"peerDependencies": {
+		"@oh-my-pi/omptype": "*",
+		"@oh-my-pi/pi-agent-core": "*",
+		"@oh-my-pi/pi-ai": "*",
+		"@oh-my-pi/pi-coding-agent": "*",
+		"@oh-my-pi/pi-tui": "*"
+	}
+}

@@ -1,0 +1,141 @@
+import type { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, test } from "vitest";
+import {
+	__resetProjectIdentityForTests,
+	__setProjectIdentityTestHooks,
+	resolveProjectIdentity,
+	resolveProjectIdentityForSession,
+} from "../../../../src/core/features/memory/project-identity";
+
+function tempDir(): string {
+	return mkdtempSync(join("/var/tmp", "mc-identity-"));
+}
+
+function returningRootCommit(rootCommit: string): typeof execFileSync {
+	return (() => `${rootCommit}\n`) as unknown as typeof execFileSync;
+}
+
+afterEach(() => {
+	__resetProjectIdentityForTests();
+});
+
+describe("resolveProjectIdentity directory fallback", () => {
+	test("refuses the exact canonical home directory unless the user opts in", () => {
+		const fakeHome = tempDir();
+		const child = join(fakeHome, "a-project");
+		try {
+			mkdirSync(child);
+			__setProjectIdentityTestHooks({ homeDirectory: () => fakeHome });
+			expect(resolveProjectIdentityForSession(fakeHome)).toBeUndefined();
+			expect(resolveProjectIdentityForSession(child)).toBeDefined();
+		} finally {
+			rmSync(fakeHome, { recursive: true, force: true });
+		}
+	});
+
+	test("uses the canonical home directory's stable dir identity when opted in", () => {
+		const canonicalHome = realpathSync.native(homedir());
+		const expected = `dir:${createHash("md5").update(canonicalHome, "utf8").digest("hex").slice(0, 12)}`;
+
+		expect(resolveProjectIdentityForSession(homedir(), true)).toBe(expected);
+	});
+
+	test("keeps a contained repository distinct from the home identity", () => {
+		const contained = mkdtempSync(join(homedir(), "mc-home-identity-"));
+		try {
+			mkdirSync(join(contained, ".git"));
+			__setProjectIdentityTestHooks({ execFileSync: returningRootCommit("abc1234") });
+			const homeIdentity = resolveProjectIdentityForSession(homedir(), true);
+			const containedIdentity = resolveProjectIdentityForSession(contained, true);
+
+			expect(homeIdentity).toBeDefined();
+			expect(containedIdentity).toBe("git:abc1234");
+			expect(containedIdentity).not.toBe(homeIdentity);
+		} finally {
+			rmSync(contained, { recursive: true, force: true });
+		}
+	});
+
+	test("requires home opt-in when a child inherits the home git repository", () => {
+		const fakeHome = tempDir();
+		const child = join(fakeHome, "nested", "project");
+		try {
+			mkdirSync(join(fakeHome, ".git"));
+			mkdirSync(child, { recursive: true });
+			__setProjectIdentityTestHooks({
+				execFileSync: returningRootCommit("def5678"),
+				homeDirectory: () => fakeHome,
+			});
+			const expectedHomeIdentity = `dir:${createHash("md5")
+				.update(realpathSync.native(fakeHome), "utf8")
+				.digest("hex")
+				.slice(0, 12)}`;
+
+			expect(resolveProjectIdentityForSession(fakeHome)).toBeUndefined();
+			expect(resolveProjectIdentityForSession(child)).toBeUndefined();
+			expect(resolveProjectIdentityForSession(fakeHome, true)).toBe(expectedHomeIdentity);
+			expect(resolveProjectIdentityForSession(child, true)).toBe(expectedHomeIdentity);
+		} finally {
+			rmSync(fakeHome, { recursive: true, force: true });
+		}
+	});
+	test("flips dir: fallback to git: once a repo gains its first commit (no stale cache)", () => {
+		const dir = tempDir();
+		try {
+			const first = resolveProjectIdentity(dir);
+			expect(first).toMatch(/^dir:[0-9a-f]{12}$/);
+			expect(resolveProjectIdentity(dir)).toBe(first);
+
+			mkdirSync(join(dir, ".git"));
+			__setProjectIdentityTestHooks({ execFileSync: returningRootCommit("abc1234") });
+
+			const second = resolveProjectIdentity(dir);
+			expect(second).toBe("git:abc1234");
+			expect(second).not.toBe(first);
+			expect(resolveProjectIdentity(dir)).toBe(second);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("derives a deterministic identity from grafted-history repos (multiple root commits)", () => {
+		const dir = tempDir();
+		try {
+			mkdirSync(join(dir, ".git"));
+			// Repos merged with --allow-unrelated-histories keep several live root
+			// commits, and git's enumeration order varies by traversal. The identity
+			// must be the lexicographic minimum of the SET, not the first line.
+			__setProjectIdentityTestHooks({
+				execFileSync: (() => "7e96b9e\n1e394c2\n4058752\n") as unknown as typeof execFileSync,
+			});
+			expect(resolveProjectIdentity(dir)).toBe("git:1e394c2");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("reuses a parent repository identity for subdirectory transient git failures", () => {
+		const dir = tempDir();
+		try {
+			mkdirSync(join(dir, ".git"));
+			__setProjectIdentityTestHooks({ execFileSync: returningRootCommit("def5678") });
+			const parentIdentity = resolveProjectIdentity(dir);
+			const subdir = join(dir, "nested", "child");
+			mkdirSync(subdir, { recursive: true });
+
+			__setProjectIdentityTestHooks({
+				execFileSync: (() => {
+					throw new Error("temporary git failure");
+				}) as unknown as typeof execFileSync,
+			});
+
+			expect(resolveProjectIdentity(subdir)).toBe(parentIdentity);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
