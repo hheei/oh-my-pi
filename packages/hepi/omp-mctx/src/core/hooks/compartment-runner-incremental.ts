@@ -398,7 +398,11 @@ export async function runCompartmentAgent(deps: CompartmentRunnerDeps): Promise<
 		// No temp-file offload needed — the bounded blocks stay well within
 		// serialization limits.
 		const projectPath = resolveProjectIdentity(directory ?? process.cwd());
-		const memories = getMemoriesByProject(db, projectPath, ["active", "permanent"]);
+		// Window-only installs deliberately omit legacy Durable Memory tables.
+		// The historian still compacts session history, but must not query or
+		// render <project-memory> unless that feature owns an initialized store.
+		const memories =
+			deps.memoryEnabled === false ? [] : getMemoriesByProject(db, projectPath, ["active", "permanent"]);
 		const projectMemory = renderMemoryBlock(memories) ?? "";
 
 		const references = buildReferenceBlocks({

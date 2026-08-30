@@ -185,9 +185,9 @@ function resolveSubagentExtensionEntry(entry: string): string {
 		: trimmed;
 }
 
-const PI_READ_ONLY_BUILTINS = ["read", "grep", "find", "ls"] as const;
+const PI_READ_ONLY_BUILTINS = ["read", "grep", "glob"] as const;
 const PI_AFT_READ_TOOLS = ["aft_outline", "aft_zoom", "aft_search"] as const;
-const PI_HISTORIAN_TOOLS = [...PI_READ_ONLY_BUILTINS, "aft_search"] as const;
+const PI_HISTORIAN_TOOLS = [...PI_READ_ONLY_BUILTINS] as const;
 
 /**
  * Set of subagent agent ids that get ctx_memory in the lean child extension.
@@ -1411,14 +1411,10 @@ export function buildArgs(
 		// below and explicitly loads only its entries. Prevent recursive startup by
 		// setting MAGIC_CONTEXT_PI_SUBAGENT=1 in the child environment, which makes
 		// the main entry exit early before registering hooks, tools, or timers.
-		// Disable skills and prompt templates because subagents only need a minimal
-		// startup path.
+		// Disable skills because subagents only need a minimal startup path.
+		// OMP 18 no longer has separate prompt-template/context-file switches;
+		// the explicitly supplied system prompt remains the child contract.
 		"--no-skills",
-		"--no-prompt-templates",
-		// Hidden one-shot subagents must receive EXACTLY the system prompt we built.
-		// Pi otherwise appends AGENTS.md / CLAUDE.md project context files, which
-		// pollutes the prompt and adds avoidable startup work.
-		"--no-context-files",
 		// --no-tools is applied below only for unknown or explicitly zero-tool agents.
 		// Every known Magic Context child gets an explicit --tools allow-list so Pi's
 		// discovered extension registry cannot leak unrelated tools into subagents.

@@ -610,16 +610,16 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 				return;
 			}
 
-			// Build prompt: include prior compartments, facts, AND read-only
-			// memory block so historian can dedup new facts against existing
-			// project memories. Cross-harness coherence comes free here —
-			// memories written by legacy host show up in this Pi historian run.
+			// Window-only installs deliberately omit legacy Durable Memory tables.
+			// Compaction remains available, but fact dedup against <project-memory>
+			// is only valid when the durable-memory feature is enabled.
 			const projectPath = resolveProjectIdentityForSession(directory, allowHomeProject);
 			if (!projectPath) {
 				rollbackDrainReservation();
 				return;
 			}
-			const memories = getMemoriesByProject(db, projectPath, ["active", "permanent"]);
+			const memories =
+				memoryEnabled === false ? [] : getMemoriesByProject(db, projectPath, ["active", "permanent"]);
 			const memoryBlock = renderMemoryBlock(memories) ?? undefined;
 
 			// v2 (E6 parity): bounded reference blocks replace the unbounded
