@@ -3,7 +3,9 @@ import { toDatabase } from "../../../src/core/features/mock-database";
 import { clearSession, updateSessionMeta } from "../../../src/core/features/storage-meta";
 
 function createMockDb() {
+	const get = vi.fn((..._args: unknown[]) => undefined);
 	const prepare = vi.fn((_sql: string) => ({
+		get,
 		run: vi.fn((..._args: unknown[]) => {}),
 	}));
 
@@ -12,6 +14,7 @@ function createMockDb() {
 	});
 
 	return {
+		get,
 		prepare,
 		transaction,
 	};
@@ -79,9 +82,15 @@ describe("storage-meta", () => {
 			//#then
 			// 2 transactions: outer clearSession + nested clearIndexedMessages
 			expect(db.transaction).toHaveBeenCalledTimes(2);
-			// Includes every session-scoped table plus the nested message-index,
-			// source-version, and compression-depth cleanup statements.
-			expect(db.prepare).toHaveBeenCalledTimes(28);
+			expect(db.get.mock.calls.map(([tableName]) => tableName)).toEqual([
+				"compartment_chunk_embeddings",
+				"user_memory_candidates",
+				"primer_candidates",
+				"embedding_measurement_corpus",
+			]);
+			// The mock reports all optional tables as absent, so only their four
+			// capability probes plus durable LKG cleanup extend the prior count.
+			expect(db.prepare).toHaveBeenCalledTimes(29);
 		});
 	});
 });

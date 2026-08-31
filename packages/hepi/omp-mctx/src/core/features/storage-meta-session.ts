@@ -1,6 +1,8 @@
 import { Buffer } from "node:buffer";
 import { getHarness } from "../shared/harness";
 import type { Database } from "../shared/sqlite";
+import { hasSqliteTable } from "../shared/sqlite-helpers";
+import { clearPersistedLkgSlot } from "../hooks/lkg-persist";
 import { clearCompressionDepth } from "./compression-depth-storage";
 import { clearIndexedMessages } from "./message-index";
 import {
@@ -196,7 +198,9 @@ export function clearSession(db: Database, sessionId: string): void {
 		db.prepare("DELETE FROM tags WHERE session_id = ?").run(sessionId);
 		db.prepare("DELETE FROM session_meta WHERE session_id = ?").run(sessionId);
 		db.prepare("DELETE FROM session_projects WHERE session_id = ?").run(sessionId);
-		db.prepare("DELETE FROM compartment_chunk_embeddings WHERE session_id = ?").run(sessionId);
+		if (hasSqliteTable(db, "compartment_chunk_embeddings")) {
+			db.prepare("DELETE FROM compartment_chunk_embeddings WHERE session_id = ?").run(sessionId);
+		}
 		db.prepare("DELETE FROM compartments WHERE session_id = ?").run(sessionId);
 		clearCompressionDepth(db, sessionId);
 		db.prepare("DELETE FROM session_facts WHERE session_id = ?").run(sessionId);
@@ -204,8 +208,12 @@ export function clearSession(db: Database, sessionId: string): void {
 		db.prepare("DELETE FROM notes WHERE session_id = ? AND type = 'session'").run(sessionId);
 		db.prepare("DELETE FROM recomp_compartments WHERE session_id = ?").run(sessionId);
 		db.prepare("DELETE FROM recomp_facts WHERE session_id = ?").run(sessionId);
-		db.prepare("DELETE FROM user_memory_candidates WHERE session_id = ?").run(sessionId);
-		db.prepare("DELETE FROM primer_candidates WHERE session_id = ?").run(sessionId);
+		if (hasSqliteTable(db, "user_memory_candidates")) {
+			db.prepare("DELETE FROM user_memory_candidates WHERE session_id = ?").run(sessionId);
+		}
+		if (hasSqliteTable(db, "primer_candidates")) {
+			db.prepare("DELETE FROM primer_candidates WHERE session_id = ?").run(sessionId);
+		}
 		// v2: m[0]/m[1] delta log + historian-extracted events are session-scoped
 		// and must be cleared on session deletion (both have session_id). Without
 		// this they leak orphaned rows when a session is deleted.
@@ -216,8 +224,11 @@ export function clearSession(db: Database, sessionId: string): void {
 		db.prepare("DELETE FROM plugin_messages WHERE session_id = ?").run(sessionId);
 		db.prepare("DELETE FROM transform_decisions WHERE session_id = ?").run(sessionId);
 		db.prepare("DELETE FROM synapse_batch_ledger WHERE session_id = ?").run(sessionId);
-		db.prepare("DELETE FROM embedding_measurement_corpus WHERE session_id = ?").run(sessionId);
+		if (hasSqliteTable(db, "embedding_measurement_corpus")) {
+			db.prepare("DELETE FROM embedding_measurement_corpus WHERE session_id = ?").run(sessionId);
+		}
 		db.prepare("DELETE FROM pending_session_cleanup WHERE session_id = ?").run(sessionId);
+		clearPersistedLkgSlot(db, sessionId);
 		clearIndexedMessages(db, sessionId);
 	})();
 }

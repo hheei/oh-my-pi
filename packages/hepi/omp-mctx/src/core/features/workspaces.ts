@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { log } from "../shared/logger";
 import type { Database } from "../shared/sqlite";
+import { hasSqliteTable } from "../shared/sqlite-helpers";
 import { V2_MEMORY_CATEGORIES } from "./memory/constants";
 import { normalizeStoredProjectPath, storedPathBelongsToIdentity } from "./memory/project-identity";
 
@@ -26,12 +27,6 @@ interface WorkspaceShareCategoriesRow {
 const VALID_SHARE_CATEGORIES = new Set<string>(V2_MEMORY_CATEGORIES);
 const DEFAULT_WORKSPACE_SHARE_CATEGORIES = ["CONSTRAINTS"] as const;
 
-function tableExists(db: Database, tableName: string): boolean {
-	const row = db
-		.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1")
-		.get(tableName);
-	return Boolean(row);
-}
 
 function columnExists(db: Database, tableName: string, columnName: string): boolean {
 	const rows = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name?: string }>;
@@ -95,7 +90,7 @@ function selectWorkspaceShareCategories(
 	identities: readonly string[],
 ): string[] | null {
 	const candidates = uniqueSorted(identities.filter((identity) => identity.length > 0));
-	if (candidates.length === 0 || !tableExists(db, "workspace_members")) {
+	if (candidates.length === 0 || !hasSqliteTable(db, "workspace_members")) {
 		return null;
 	}
 
@@ -111,7 +106,7 @@ function selectWorkspaceShareCategories(
 	);
 	if (!hasMembership) return null;
 
-	if (!tableExists(db, "workspaces")) {
+	if (!hasSqliteTable(db, "workspaces")) {
 		log(
 			"[magic-context] WARN: workspace member has no workspaces table; sharing no foreign memory categories",
 		);
@@ -159,7 +154,7 @@ export function resolveWorkspaceIdentitySet(
 	db: Database,
 	projectIdentity: string,
 ): WorkspaceIdentitySet {
-	if (!tableExists(db, "workspace_members")) {
+	if (!hasSqliteTable(db, "workspace_members")) {
 		return { identities: [projectIdentity], namesByIdentity: new Map() };
 	}
 
@@ -304,7 +299,7 @@ function isInTransaction(db: Database): boolean {
 }
 
 function workspaceMembersForIdentity(db: Database, identity: string): string[] {
-	if (!tableExists(db, "workspace_members")) return [identity];
+	if (!hasSqliteTable(db, "workspace_members")) return [identity];
 	const rows = db
 		.prepare(
 			`SELECT member.project_path AS identity
