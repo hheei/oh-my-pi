@@ -25,3 +25,24 @@ export function closeQuietly(db: Database | null | undefined): void {
 		// intentional: caller wants quiet close
 	}
 }
+const sqliteTablePresenceCache = new WeakMap<Database, Map<string, boolean>>();
+
+export function hasSqliteTable(db: Database, tableName: string): boolean {
+	let cache = sqliteTablePresenceCache.get(db);
+	if (!cache) {
+		cache = new Map();
+		sqliteTablePresenceCache.set(db, cache);
+	}
+	const cached = cache.get(tableName);
+	if (cached !== undefined) return cached;
+	const row = db
+		.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1")
+		.get(tableName);
+	const present = row !== undefined && row !== null;
+	cache.set(tableName, present);
+	return present;
+}
+
+export function invalidateSqliteTableCache(db: Database): void {
+	sqliteTablePresenceCache.delete(db);
+}

@@ -5,7 +5,7 @@ import { getMagicContextStorageDir } from "../shared/data-path";
 import { getErrorMessage } from "../shared/error-message";
 import { log } from "../shared/logger";
 import { Database } from "../shared/sqlite";
-import { closeQuietly } from "../shared/sqlite-helpers";
+import { closeQuietly, invalidateSqliteTableCache } from "../shared/sqlite-helpers";
 import { shouldEnforcePrivateStoragePermissions } from "../shared/storage-permissions";
 import { ensureContextStoreUuid } from "./context-authority";
 import { LATEST_SCHEMA_SQL, WINDOW_SCHEMA_SQL } from "./fresh-schema";
@@ -248,6 +248,7 @@ export function initializeDatabase(db: Database, options: { memoryEnabled?: bool
 		).run();
 	}
 	db.exec(LKG_SLOTS_DDL);
+	invalidateSqliteTableCache(db);
 }
 
 /**

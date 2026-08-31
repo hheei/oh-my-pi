@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Database } from "../shared/sqlite";
+import { hasSqliteTable } from "../shared/sqlite-helpers";
 
 export interface EmbeddingMeasurementInput {
 	sessionId: string;
@@ -217,14 +218,7 @@ export function pruneSynapseBatchLedgerForProject(
 	projectIdentity: string,
 	ttlMs: number = SYNAPSE_BATCH_LEDGER_TTL_MS,
 ): number {
-	// Minimal test databases may not create the ledger table; skip there (the
-	// same sqlite_master guard persistPrimaryDescriptor uses for descriptors).
-	const ledgerTable = db
-		.prepare(
-			"SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'synapse_batch_ledger'",
-		)
-		.get();
-	if (!ledgerTable) return 0;
+	if (!hasSqliteTable(db, "synapse_batch_ledger")) return 0;
 	return db
 		.prepare("DELETE FROM synapse_batch_ledger WHERE session_id IN (?, ?) AND updated_at < ?")
 		.run(projectIdentity, `shadow:${projectIdentity}`, Date.now() - ttlMs).changes;

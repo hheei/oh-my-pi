@@ -7,6 +7,7 @@ import {
 
 import { log } from "../shared/logger";
 import type { Database, Statement as PreparedStatement } from "../shared/sqlite";
+import { hasSqliteTable } from "../shared/sqlite-helpers";
 import {
 	buildCanonicalChunkTextFromFts,
 	buildCompartmentSummaryFallbackText,
@@ -262,12 +263,7 @@ function synapseConfigFields(config: EmbeddingConfig): {
 }
 
 function persistPrimaryDescriptor(db: Database, registration: ProjectEmbeddingRegistration): void {
-	const descriptorTable = db
-		.prepare(
-			"SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'embedding_registrations'",
-		)
-		.get();
-	if (!descriptorTable) return;
+	if (!hasSqliteTable(db, "embedding_registrations")) return;
 	const fields = synapseConfigFields(registration.config);
 	db.prepare(
 		`INSERT INTO embedding_registrations
@@ -298,12 +294,7 @@ function persistPrimaryDescriptor(db: Database, registration: ProjectEmbeddingRe
 }
 
 function persistShadowDescriptor(db: Database, registration: ShadowEmbeddingRegistration): void {
-	const descriptorTable = db
-		.prepare(
-			"SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'shadow_embedding_registrations'",
-		)
-		.get();
-	if (!descriptorTable) return;
+	if (!hasSqliteTable(db, "shadow_embedding_registrations")) return;
 	const fields = synapseConfigFields(registration.config);
 	const now = Date.now();
 	db.prepare(

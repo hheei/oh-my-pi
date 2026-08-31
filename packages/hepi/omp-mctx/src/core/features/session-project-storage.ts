@@ -1,5 +1,6 @@
 import { getHarness } from "../shared/harness";
 import type { Database, Statement as PreparedStatement } from "../shared/sqlite";
+import { hasSqliteTable } from "../shared/sqlite-helpers";
 import { isUserHomeDirectory } from "./memory/project-identity";
 
 const SESSION_CHUNK_REPAIR_BATCH_SIZE = 100;
@@ -98,16 +99,18 @@ export function recordSessionProjectIdentity(
 	const now = Date.now();
 	db.transaction(() => {
 		getUpsertSessionProjectStatement(db).run(sessionId, harness, projectPath, now);
-		// Repair a bounded slice of chunks stamped with a project other than the
-		// session's recorded owner. Repeated observations resume the repair
-		// without making transform wait on an unbounded update.
-		getRepairSessionChunkProjectStatement(db).run(
-			projectPath,
-			sessionId,
-			harness,
-			projectPath,
-			SESSION_CHUNK_REPAIR_BATCH_SIZE,
-		);
+		if (hasSqliteTable(db, "compartment_chunk_embeddings")) {
+			// Repair a bounded slice of chunks stamped with a project other than the
+			// session's recorded owner. Repeated observations resume the repair
+			// without making transform wait on an unbounded update.
+			getRepairSessionChunkProjectStatement(db).run(
+				projectPath,
+				sessionId,
+				harness,
+				projectPath,
+				SESSION_CHUNK_REPAIR_BATCH_SIZE,
+			);
+		}
 	})();
 }
 
@@ -122,6 +125,6 @@ export function repairMisScopedCompartmentChunkEmbeddingsForProject(
 	db: Database,
 	projectPath: string,
 ): number {
-	if (!projectPath) return 0;
+	if (!projectPath || !hasSqliteTable(db, "compartment_chunk_embeddings")) return 0;
 	return getRepairProjectChunkProjectStatement(db).run(projectPath, projectPath).changes;
 }
