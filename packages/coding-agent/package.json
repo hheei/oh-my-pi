@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@oh-my-pi/pi-coding-agent",
-  "version": "18.1.6",
+  "version": "1.0.2",
   "description": "Coding agent CLI with read, bash, edit, write tools and session management",
   "homepage": "https://omp.sh",
   "author": "Stencil Labs, Inc.",
@@ -16,7 +16,7 @@
   },
   "fork": {
     "npmName": "@hheei/oh-my-pi",
-    "npmVersion": "18.0.7",
+    "npmVersion": "1.0.2",
     "upstream": "can1357/oh-my-pi",
     "upstreamVersion": "18.0.6"
   },
