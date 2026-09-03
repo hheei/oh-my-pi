@@ -16,9 +16,9 @@
   },
   "fork": {
     "npmName": "@hheei/oh-my-pi",
-    "npmVersion": "1.0.2",
+    "npmVersion": "1.1.0",
     "upstream": "can1357/oh-my-pi",
-    "upstreamVersion": "18.0.6"
+    "upstreamVersion": "18.1.18"
   },
   "bugs": {
     "url": "https://github.com/can1357/oh-my-pi/issues"
