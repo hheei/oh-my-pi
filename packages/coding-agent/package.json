@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@oh-my-pi/pi-coding-agent",
-  "version": "1.0.2",
+  "version": "18.1.6",
   "description": "Coding agent CLI with read, bash, edit, write tools and session management",
   "homepage": "https://omp.sh",
   "author": "Stencil Labs, Inc.",
@@ -18,7 +18,7 @@
     "npmName": "@hheei/oh-my-pi",
     "npmVersion": "1.0.2",
     "upstream": "can1357/oh-my-pi",
-    "upstreamVersion": "18.0.6"
+    "upstreamVersion": "18.1.6"
   },
   "bugs": {
     "url": "https://github.com/can1357/oh-my-pi/issues"
