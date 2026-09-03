@@ -722,7 +722,16 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		appendGroupedReadUsageLines(
 			lines,
 			usageRows.map(usageRow =>
-				theme.fg("dim", formatUsageRow(usageRow.usage, usageRow.durationMs, usageRow.ttftMs, usageRow.timestamp, usageRow.turnElapsedMs)),
+				theme.fg(
+					"dim",
+					formatUsageRow(
+						usageRow.usage,
+						usageRow.durationMs,
+						usageRow.ttftMs,
+						usageRow.timestamp,
+						usageRow.turnElapsedMs,
+					),
+				),
 			),
 		);
 	}

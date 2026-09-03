@@ -89,10 +89,10 @@ describe("formatUsageRow turn elapsed", () => {
 		await initTheme();
 	});
 
-	it("renders the clock-and-delta prompt→yield time right after the timestamp", () => {
+	it("renders the clock-and-delta prompt→yield time without a wall-clock timestamp", () => {
 		const row = formatUsageRow(assistantMessage().usage as Usage, REQUEST_DURATION_MS, undefined, PROMPT_AT, 60_000);
-		expect(row.indexOf("2026-01-02 03:04:05")).toBeLessThan(row.indexOf(TURN_ELAPSED_LABEL));
 		expect(row).toContain(TURN_ELAPSED_LABEL);
+		expect(row).not.toContain("2026-01-02 03:04:05");
 	});
 
 	it("omits the delta when no elapsed is supplied", () => {
