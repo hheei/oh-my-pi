@@ -39,10 +39,7 @@
 
 import * as crypto from "node:crypto";
 import { withContentLanguageDirective } from "#core/agents/language-directive";
-import {
-	type CompartmentChunkToEmbed,
-	embedAndStoreCompartmentChunks,
-} from "#core/features/compartment-embedding";
+import { type CompartmentChunkToEmbed, embedAndStoreCompartmentChunks } from "#core/features/compartment-embedding";
 import { insertCompartmentEvents } from "#core/features/compartment-events";
 import { isCompartmentLeaseHeld } from "#core/features/compartment-lease";
 import { appendCompartments, getCompartments } from "#core/features/compartment-storage";
@@ -97,11 +94,7 @@ import {
 	selectPerRunCap,
 	validateBoundarySnapshot,
 } from "#core/hooks/protected-tail-boundary";
-import {
-	type RawMessageProvider,
-	readSessionChunk,
-	withRawMessageProvider,
-} from "#core/hooks/read-session-chunk";
+import { type RawMessageProvider, readSessionChunk, withRawMessageProvider } from "#core/hooks/read-session-chunk";
 import { estimateTokens } from "#core/hooks/read-session-formatting";
 import { buildReferenceBlocks } from "#core/hooks/reference-retrieval";
 import { describeError } from "#core/shared/error-message";
@@ -115,6 +108,17 @@ import type {
 } from "#core/shared/subagent-runner";
 
 import { ensureProjectRegisteredFromPiDirectory } from "./embedding-bootstrap";
+import {
+	createHistorianBackground,
+	formatHistorianBackground,
+	admitHistorianCandidate,
+	contentFingerprint,
+	mapParserCategory,
+	type HistorianRecall,
+} from "./agentmemory/historian";
+import { decodeAgentMemorySearchResults } from "./agentmemory/client";
+import type { AgentMemoryClientPort } from "./agentmemory/client";
+import { commitHistorianPublication, resolveLinkedObservationId } from "./agentmemory/outbox";
 import { convertEntriesToRawMessages, SYNTH_USER_ID_PREFIX } from "./read-session-pi";
 
 const HISTORIAN_AGENT_NAME = "magic-context-historian";
@@ -148,22 +152,12 @@ function isTransientHistorianPromptError(message: string): boolean {
 		return false;
 	}
 
-	return [
-		"429",
-		"rate limit",
-		"timeout",
-		"econnreset",
-		"etimedout",
-		"503",
-		"502",
-		"500",
-		"overloaded",
-	].some((token) => normalized.includes(token));
+	return ["429", "rate limit", "timeout", "econnreset", "etimedout", "503", "502", "500", "overloaded"].some(token =>
+		normalized.includes(token),
+	);
 }
 
-function isTransientHistorianRunFailure(
-	result: Extract<SubagentRunResult, { ok: false }>,
-): boolean {
+function isTransientHistorianRunFailure(result: Extract<SubagentRunResult, { ok: false }>): boolean {
 	if (result.reason === "abort") return false;
 	if (result.reason === "timeout") return true;
 	return isTransientHistorianPromptError(result.error);
@@ -182,9 +176,9 @@ async function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<boolean
 	if (signal?.aborted) return true;
 	if (ms <= 0) return signal?.aborted === true;
 
-	return new Promise<boolean>((resolve) => {
+	return new Promise<boolean>(resolve => {
 		let settled = false;
-		let timeout: ReturnType<typeof setTimeout> | undefined;
+		const timeout = setTimeout(() => finish(false), ms);
 		const finish = (aborted: boolean) => {
 			if (settled) return;
 			settled = true;
@@ -194,7 +188,6 @@ async function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<boolean
 		};
 		const onAbort = () => finish(true);
 		signal?.addEventListener("abort", onAbort, { once: true });
-		timeout = setTimeout(() => finish(false), ms);
 	});
 }
 
@@ -233,8 +226,7 @@ async function runHistorianSubagentWithTransientRetries(args: {
 			return result.reason === "abort" ? result : historianAbortResult(startedAt);
 		}
 
-		const shouldRetry =
-			retryIndex < MAX_HISTORIAN_RETRIES && isTransientHistorianRunFailure(result);
+		const shouldRetry = retryIndex < MAX_HISTORIAN_RETRIES && isTransientHistorianRunFailure(result);
 		if (!shouldRetry) return result;
 
 		const backoffMs = args.retryBackoffMs?.(retryIndex) ?? getHistorianRetryBackoffMs(retryIndex);
@@ -384,6 +376,17 @@ export interface PiHistorianDeps {
 	ensureProjectRegistered?: ((directory: string, db: Database) => void | Promise<void>) | undefined;
 	/** Manual wrapup bypasses the pressure-window quota but keeps no-progress protection. */
 	forceDrainQuota?: boolean | undefined;
+	/** Optional mctx-owned agentmemory historian bridge. */
+	agentMemory?: {
+		enabled: boolean;
+		historianRetrieval: boolean;
+		project: string;
+		agentId?: string;
+		activeSessionId?: (ompSessionId: string) => string | undefined;
+		client: AgentMemoryClientPort;
+	};
+	/** SQLite-backed retrieval taint consulted during historian admission. */
+	agentMemoryTaint?: { isHostEntryTainted?: (hostEntryId: string) => boolean };
 	/** Persist the final weak-lookahead compartment for coverage while skipping promotion. */
 	forceKeepLastCompartment?: boolean | undefined;
 }
@@ -418,6 +421,8 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 		ensureProjectRegistered = ensureProjectRegisteredFromPiDirectory,
 		forceDrainQuota,
 		forceKeepLastCompartment,
+		agentMemory,
+		agentMemoryTaint,
 	} = deps;
 
 	let issueNotified = false;
@@ -464,10 +469,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 			// Sanity-check existing stored state before touching anything.
 			const existingValidationError = validateStoredCompartments(priorCompartments);
 			if (existingValidationError) {
-				sessionLog(
-					sessionId,
-					`historian failure: source=existing-validation reason="${existingValidationError}"`,
-				);
+				sessionLog(sessionId, `historian failure: source=existing-validation reason="${existingValidationError}"`);
 				{
 					const failCount = incrementHistorianFailure(db, sessionId, existingValidationError);
 					await notify(buildHistorianFailureNotice(failCount, existingValidationError));
@@ -483,10 +485,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 				providedBoundarySnapshot ??
 				(process.env.NODE_ENV === "test" ? createDefaultBoundarySnapshotForTests(sessionId) : null);
 			if (!boundarySnapshot) {
-				sessionLog(
-					sessionId,
-					"historian no-op: missing protected-tail boundary snapshot from Pi trigger decision",
-				);
+				sessionLog(sessionId, "historian no-op: missing protected-tail boundary snapshot from Pi trigger decision");
 				return;
 			}
 			let validation =
@@ -549,9 +548,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 			const perRunCap = selectPerRunCap(boundarySnapshot);
 			const usable = Math.max(
 				1,
-				Math.round(
-					(boundarySnapshot.contextLimit * boundarySnapshot.executeThresholdPercentage) / 100,
-				),
+				Math.round((boundarySnapshot.contextLimit * boundarySnapshot.executeThresholdPercentage) / 100),
 			);
 			const reserve = forceDrainQuota
 				? { ok: true as const, reservation: null }
@@ -566,10 +563,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 						executeThresholdPercentage: boundarySnapshot.executeThresholdPercentage,
 					});
 			if (!reserve.ok) {
-				sessionLog(
-					sessionId,
-					`historian rate-limit skip: ${reserve.skippedReason ?? "quota exhausted"}`,
-				);
+				sessionLog(sessionId, `historian rate-limit skip: ${reserve.skippedReason ?? "quota exhausted"}`);
 				telemetry.status = "noop";
 				telemetry.failureReason = "protected-tail drain quota exhausted";
 				return;
@@ -618,8 +612,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 				rollbackDrainReservation();
 				return;
 			}
-			const memories =
-				memoryEnabled === false ? [] : getMemoriesByProject(db, projectPath, ["active", "permanent"]);
+			const memories = memoryEnabled === false ? [] : getMemoriesByProject(db, projectPath, ["active", "permanent"]);
 			const memoryBlock = renderMemoryBlock(memories) ?? undefined;
 
 			// v2 (E6 parity): bounded reference blocks replace the unbounded
@@ -635,6 +628,81 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 				chunkStart: chunk.startIndex,
 				sessionCompartments: priorCompartments,
 			});
+			let agentMemoryBackground = "";
+			if (agentMemory?.enabled && agentMemory.historianRetrieval && agentMemory.project) {
+				try {
+					const response = await agentMemory.client.search({
+						query: chunk.text,
+						project: agentMemory.project,
+						...(agentMemory.agentId ? { agentId: agentMemory.agentId } : {}),
+						limit: 6,
+					});
+					const decoded = decodeAgentMemorySearchResults(response);
+					const observationSessions = new Map<string, { project?: string; agentId?: string }>();
+					if (
+						decoded.some(entry => entry.kind === "observation" && !entry.project && entry.sessionId) &&
+						typeof agentMemory.client.listSessions === "function"
+					) {
+						for (const remote of await agentMemory.client.listSessions()) {
+							const id = remote.id ?? remote.sessionId;
+							if (id) observationSessions.set(id, remote);
+						}
+					}
+					const recall: HistorianRecall[] = (
+						await Promise.all(
+							decoded.map(async entry => {
+								const remote = entry.sessionId ? observationSessions.get(entry.sessionId) : undefined;
+								let value = { ...entry, ...remote } as Record<string, unknown>;
+								if (
+									entry.kind !== "observation" &&
+									(typeof value.project !== "string" ||
+										(agentMemory.agentId !== undefined && typeof value.agentId !== "string")) &&
+									typeof value.id === "string" &&
+									agentMemory.client.getMemory
+								) {
+									const hydrated = await agentMemory.client.getMemory(value.id).catch(() => null);
+									if (hydrated) value = { ...value, ...hydrated };
+								}
+								const content = typeof value.content === "string" ? value.content.trim() : "";
+								const project = typeof value.project === "string" ? value.project.trim() : "";
+								const remoteSessionId =
+									typeof value.sessionId === "string"
+										? value.sessionId
+										: typeof value.session_id === "string"
+											? value.session_id
+											: undefined;
+								if (!content) return [];
+								if (
+									project !== agentMemory.project ||
+									(agentMemory.agentId !== undefined && value.agentId !== agentMemory.agentId) ||
+									(remoteSessionId !== undefined &&
+										remoteSessionId === agentMemory.activeSessionId?.(sessionId))
+								)
+									return [];
+								return [
+									{
+										content,
+										project,
+										...(typeof value.agentId === "string" ? { agentId: value.agentId } : {}),
+										...(remoteSessionId ? { sessionId: remoteSessionId } : {}),
+									},
+								];
+							}),
+						)
+					).flat();
+					agentMemoryBackground = formatHistorianBackground(
+						createHistorianBackground(recall, {
+							project: agentMemory.project,
+							...(agentMemory.agentId ? { agentId: agentMemory.agentId } : {}),
+						}),
+					);
+				} catch (error) {
+					sessionLog(
+						sessionId,
+						`agentmemory historian retrieval skipped: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+			}
 
 			const chunkText = truncateHistorianInputIfNeeded(chunk.text, historianChunkTokens);
 			if (chunkText !== chunk.text) {
@@ -651,13 +719,11 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 				inputSource: `Messages ${chunk.startIndex}-${chunk.endIndex}:\n\n${chunkText}`,
 				memoryEnabled: memoryEnabled !== false,
 			});
+			const historianPrompt = agentMemoryBackground ? `${prompt}\n\n${agentMemoryBackground}` : prompt;
 
 			// Defensive: use MAX(sequence) + 1 over .length to survive any old
 			// recomp gaps. Same logic as legacy host runner.
-			const maxExistingSequence = priorCompartments.reduce(
-				(max, c) => (c.sequence > max ? c.sequence : max),
-				-1,
-			);
+			const maxExistingSequence = priorCompartments.reduce((max, c) => (c.sequence > max ? c.sequence : max), -1);
 			const sequenceOffset = priorCompartments.length === 0 ? 0 : maxExistingSequence + 1;
 
 			sessionLog(
@@ -727,11 +793,9 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 			};
 
 			retainDrainReservationForRetryThrottle = true;
-			const historianSystemPrompt = withContentLanguageDirective(
-				COMPARTMENT_AGENT_SYSTEM_PROMPT,
-				deps.language,
-				{ preserveUserQuotes: true },
-			);
+			const historianSystemPrompt = withContentLanguageDirective(COMPARTMENT_AGENT_SYSTEM_PROMPT, deps.language, {
+				preserveUserQuotes: true,
+			});
 			const historianEditorSystemPrompt = withContentLanguageDirective(
 				HISTORIAN_EDITOR_SYSTEM_PROMPT,
 				deps.language,
@@ -747,7 +811,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 				options: {
 					agent: HISTORIAN_AGENT_NAME,
 					systemPrompt: historianSystemPrompt,
-					userMessage: prompt,
+					userMessage: historianPrompt,
 					model: historianModel,
 					timeoutMs: historianTimeoutMs,
 					cwd: directory,
@@ -783,7 +847,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 					`historian: first pass validation failed, retrying with repair prompt: ${validatedPass.error}`,
 				);
 				const repairPrompt = buildHistorianRepairPrompt(
-					prompt,
+					historianPrompt,
 					validatedPass.rawText,
 					validatedPass.error,
 					deps.language,
@@ -827,11 +891,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 			// candidate is run and validated explicitly because a model can complete
 			// successfully while producing no usable compartments. The live session's
 			// current model is appended as the final last-resort candidate.
-			const fallbackChain = buildHistorianFallbackChain(
-				historianModel,
-				fallbackModels,
-				fallbackModelId,
-			);
+			const fallbackChain = buildHistorianFallbackChain(historianModel, fallbackModels, fallbackModelId);
 			if (
 				validatedPass.kind !== "ok" &&
 				!(validatedPass.kind === "spawn-failed" && validatedPass.reason === "abort") &&
@@ -852,7 +912,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 						options: {
 							agent: HISTORIAN_AGENT_NAME,
 							systemPrompt: historianSystemPrompt,
-							userMessage: prompt,
+							userMessage: historianPrompt,
 							model: candidate.modelId,
 							timeoutMs: historianTimeoutMs,
 							cwd: directory,
@@ -952,10 +1012,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 								: editorPass.kind === "spawn-failed"
 									? `subagent run failed (${editorPass.reason}): ${editorPass.error}`
 									: "editor returned no usable text";
-						sessionLog(
-							sessionId,
-							`historian two-pass: editor failed (${editorErr}), falling back to draft`,
-						);
+						sessionLog(sessionId, `historian two-pass: editor failed (${editorErr}), falling back to draft`);
 						// Keep validatedPass as the first-pass result.
 					}
 				}
@@ -1043,11 +1100,10 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 
 			// Events: stored, NOT rendered. Best-effort. discard-last: drop events
 			// anchored to the discarded provisional compartment.
-			const publishableEvents = (validatedPass.events ?? []).filter((e) => {
+			const publishableEvents = (validatedPass.events ?? []).filter(e => {
 				if (typeof e.atCompartment !== "number") return !weakLookaheadFinalCompartment;
 				if (e.atCompartment > newCompartments.length) return false;
-				if (weakLookaheadFinalCompartment && e.atCompartment >= emittedCompartments.length)
-					return false;
+				if (weakLookaheadFinalCompartment && e.atCompartment >= emittedCompartments.length) return false;
 				return true;
 			});
 			let promotedFactRefs: Array<{ memoryId: number; content: string }> = [];
@@ -1078,7 +1134,77 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 				// anchoring + post-commit embeddings.
 				persistedIds = getCompartments(db, sessionId)
 					.slice(-newCompartments.length)
-					.map((c) => c.id);
+					.map(c => c.id);
+				// Only facts whose exact text is independently present in the raw user/tool
+				// chunk are admitted. Recalled context and model-only paraphrases stay out
+				// of the durable bridge; the outbox row is part of this same transaction.
+				if (agentMemory?.enabled && !skipUnanchoredPromotion && agentMemory.project) {
+					const remoteSessionId = agentMemory.activeSessionId?.(sessionId);
+					if (remoteSessionId)
+						for (const fact of validatedPass.facts ?? []) {
+							const sourceIndex = chunk.lines.findIndex(
+								line =>
+									line.messageId.length > 0 &&
+									typeof line.sourceText === "string" &&
+									line.sourceText.includes(fact.content),
+							);
+							const source = chunk.lines[sourceIndex];
+							if (!source) continue;
+							let tainted = agentMemoryTaint?.isHostEntryTainted?.(source.messageId) === true;
+							if (!tainted && source.role !== "user") {
+								for (let index = sourceIndex - 1; index >= 0; index -= 1) {
+									const ancestor = chunk.lines[index];
+									if (ancestor?.role !== "user") continue;
+									tainted = agentMemoryTaint?.isHostEntryTainted?.(ancestor.messageId) === true;
+									break;
+								}
+							}
+							const admission = admitHistorianCandidate({
+								content: fact.content,
+								type: mapParserCategory(fact.category),
+								evidence: [
+									{
+										kind:
+											source.role === "tool" ? "tool" : source.role === "assistant" ? "assistant" : "user",
+										content: source.sourceText ?? fact.content,
+										hostEntryId: source.messageId,
+										...(source.toolCallId ? { toolCallId: source.toolCallId } : {}),
+										harnessId: "omp",
+										contentFingerprint: contentFingerprint(source.sourceText ?? fact.content),
+										tainted,
+									},
+								],
+							});
+							if (!admission.accepted) continue;
+							const sourceObservationIds = admission.candidate.sourceRefs
+								.map(ref =>
+									resolveLinkedObservationId(db, {
+										sourceId: ref.hostEntryId,
+										sessionId: remoteSessionId,
+										project: agentMemory.project,
+										sourceKinds:
+											source.role === "tool"
+												? ["post_tool_use", "post_tool_failure"]
+												: source.role === "user"
+													? ["prompt_submit"]
+													: ["assistant_end"],
+										content: source.sourceText ?? fact.content,
+									}),
+								)
+								.filter((id): id is string => id !== undefined);
+							if (sourceObservationIds.length !== admission.candidate.sourceRefs.length) continue;
+							commitHistorianPublication(db, {
+								candidate: {
+									content: admission.candidate.content,
+									project: agentMemory.project,
+									...(agentMemory.agentId ? { agentId: agentMemory.agentId } : {}),
+									type: admission.candidate.type,
+									sourceObservationIds,
+								},
+								writeWindow: () => undefined,
+							});
+						}
+				}
 				// v2 faithful fact lifecycle (E6 parity): facts are no longer a
 				// REPLACE-the-whole-list store. The historian emits only THIS
 				// chunk's facts (deduped against <project-memory> in the prompt);
@@ -1087,12 +1213,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 				// renderer's m[1] new-memories watermark. Promotion is in the SAME
 				// transaction as the boundary floor below, so both commit or both roll back.
 				if (promotionActive && !skipUnanchoredPromotion) {
-					promotedFactRefs = promoteSessionFactsDurable(
-						db,
-						sessionId,
-						projectPath,
-						validatedPass.facts ?? [],
-					);
+					promotedFactRefs = promoteSessionFactsDurable(db, sessionId, projectPath, validatedPass.facts ?? []);
 				}
 
 				if (publishableEvents.length > 0) {
@@ -1161,25 +1282,18 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 			// best-effort, so an auxiliary failure never rolls back the publish.
 			// Gated on the user-memory feature so opted-out users never have
 			// behavioral candidates persisted (privacy parity with legacy host).
-			if (
-				userMemoriesEnabled === true &&
-				!skipUnanchoredPromotion &&
-				validatedPass.userObservations?.length
-			) {
+			if (userMemoriesEnabled === true && !skipUnanchoredPromotion && validatedPass.userObservations?.length) {
 				try {
 					insertUserMemoryCandidates(
 						db,
-						validatedPass.userObservations.map((obs) => ({
+						validatedPass.userObservations.map(obs => ({
 							content: obs,
 							sessionId,
 							sourceCompartmentStart: newCompartments[0]?.startMessage,
 							sourceCompartmentEnd: lastNewEnd,
 						})),
 					);
-					sessionLog(
-						sessionId,
-						`stored ${validatedPass.userObservations.length} user memory candidate(s)`,
-					);
+					sessionLog(sessionId, `stored ${validatedPass.userObservations.length} user memory candidate(s)`);
 				} catch (error) {
 					sessionLog(sessionId, "failed to store user memory candidates:", error);
 				}
@@ -1210,8 +1324,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 						const endC = origin ?? lastNew;
 						const sourceStartMessageId =
 							startC?.startMessageId || `ordinal:${startC?.startMessage ?? chunk.startIndex}`;
-						const sourceEndMessageId =
-							endC?.endMessageId || `ordinal:${endC?.endMessage ?? lastNewEnd}`;
+						const sourceEndMessageId = endC?.endMessageId || `ordinal:${endC?.endMessage ?? lastNewEnd}`;
 						const sourceMessage = provider.readMessageById?.(sourceStartMessageId);
 						const sourceMessageTime = parseSourceMessageTime(sourceMessage?.version) ?? Date.now();
 						const stored = insertPrimerCandidates(db, [
@@ -1274,7 +1387,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 			{
 				const facts = validatedPass.facts ?? [];
 				const validIds = persistedIds.filter((id): id is number => typeof id === "number");
-				const imp = summarizeImportance(newCompartments.map((c) => c.importance ?? 50));
+				const imp = summarizeImportance(newCompartments.map(c => c.importance ?? 50));
 				telemetry.status = "success";
 				telemetry.chunkStartOrdinal = chunk.startIndex;
 				telemetry.chunkEndOrdinal = chunk.endIndex;
@@ -1319,9 +1432,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 		try {
 			const latest = getLatestHistorianInvocationId(db, sessionId);
 			const invocationId =
-				latest != null && (invocationBaseline == null || latest > invocationBaseline)
-					? latest
-					: null;
+				latest != null && (invocationBaseline == null || latest > invocationBaseline) ? latest : null;
 			recordHistorianRun(db, {
 				sessionId,
 				harness: "pi",
@@ -1429,7 +1540,7 @@ export function buildPiCompactionSummary(
 	}>,
 ): string {
 	if (compartments.length === 0) return "Magic Context compacted prior history.";
-	const titles = compartments.map((c) => c.title.trim()).filter((title) => title.length > 0);
+	const titles = compartments.map(c => c.title.trim()).filter(title => title.length > 0);
 	if (titles.length === 0) {
 		const first = compartments[0];
 		const last = compartments[compartments.length - 1];
@@ -1513,13 +1624,10 @@ export function buildPiCompactionSummary(
  * directly. An empty-id slot (unknown role with no entry id) is also unsafe to
  * cut at, so defer there too.
  */
-export function findFirstKeptEntryId(
-	entries: unknown[],
-	lastCompactedOrdinal: number,
-): string | null {
+export function findFirstKeptEntryId(entries: unknown[], lastCompactedOrdinal: number): string | null {
 	const rawMessages = convertEntriesToRawMessages(entries);
 	const target = lastCompactedOrdinal + 1;
-	const boundary = rawMessages.find((m) => m.ordinal === target);
+	const boundary = rawMessages.find(m => m.ordinal === target);
 	if (!boundary) return null;
 	// The kept tail must START at this exact message. If it carries a real,
 	// replay-safe entry id, use it. If it is synthetic (folded toolResult run)

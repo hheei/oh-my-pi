@@ -5,6 +5,12 @@ export interface RawMessageParts {
 	createdAt?: number | null | undefined;
 	version?: string | number | null | undefined;
 	skipTags?: boolean | undefined;
+	sourceLines?: Array<{
+		messageId: string;
+		role: string;
+		sourceText: string;
+		toolCallId?: string;
+	}>;
 }
 
 export interface RawMessage extends RawMessageParts {
@@ -44,7 +50,7 @@ export interface InMemoryTailResult {
 export function extractInMemoryMessageViews(
 	messages: readonly { info?: unknown; parts?: unknown }[],
 ): InMemoryMessageView[] {
-	return messages.map((message) => {
+	return messages.map(message => {
 		const info = (message.info ?? {}) as Record<string, unknown>;
 		return {
 			id: typeof info.id === "string" ? info.id : "",
@@ -62,16 +68,14 @@ export function buildInMemoryTailRawMessages(args: {
 	lastCompartmentEnd: number;
 	anchorMessageId: string | null;
 }): InMemoryTailResult | null {
-	const filtered = args.messages.filter(
-		(message) => !(message.summary === true && message.finish === "stop"),
-	);
+	const filtered = args.messages.filter(message => !(message.summary === true && message.finish === "stop"));
 	if (filtered.length === 0) return null;
 
 	let startIndex = 0;
 	let anchorFound = false;
 	let ordinal = Math.max(1, args.lastCompartmentEnd + 1);
 	if (args.anchorMessageId) {
-		const anchorIndex = filtered.findIndex((message) => message.id === args.anchorMessageId);
+		const anchorIndex = filtered.findIndex(message => message.id === args.anchorMessageId);
 		if (anchorIndex >= 0) {
 			startIndex = anchorIndex;
 			anchorFound = true;

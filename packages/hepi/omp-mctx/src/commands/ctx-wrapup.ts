@@ -34,7 +34,6 @@ import { resolvePiUsableContextLimit } from "../pi-context-limit";
 import { runPiHistorian } from "../pi-historian-runner";
 import { isPiRecompInFlight } from "../pi-recomp-runner";
 import { readPiSessionMessages } from "../read-session-pi";
-import { updateStatusLine } from "../status-line";
 import { resolveSessionId, sendCtxStatusMessage } from "./pi-command-utils";
 
 export interface RegisterCtxWrapupDeps {
@@ -49,13 +48,13 @@ export interface RegisterCtxWrapupDeps {
 	memoryEnabled: boolean;
 	autoPromote: boolean;
 	userMemoriesEnabled?: boolean | undefined;
-	executeThresholdPercentage?: number | { default: number; [modelKey: string]: number } | undefined;
+	executeThresholdPercentage?: number | { default: number;[modelKey: string]: number } | undefined;
 	executeThresholdTokens?:
-		| {
-				default?: number | undefined;
-				[modelKey: string]: number | undefined;
-		  }
-		| undefined;
+	| {
+		default?: number | undefined;
+		[modelKey: string]: number | undefined;
+	}
+	| undefined;
 	runPiHistorianForWrapup?: typeof runPiHistorian | undefined;
 	wrapupLeaseWaitTimeoutMs?: number | undefined;
 	resolveRuntimeDeps?: ((ctx: { cwd: string }) => CtxWrapupRuntimeDeps) | undefined;
@@ -299,7 +298,7 @@ export async function runPiWrapup(
 			let targetEligibleEndOrdinal = initialPlan.targetEligibleEndOrdinal;
 			let failure: string | null = null;
 
-			for (;;) {
+			for (; ;) {
 				if (ownershipLost) {
 					failure = `${ownershipLostReason}; wrapped up through message ${lastEnd}. Run /ctx-wrapup again to continue.`;
 					break;
@@ -437,7 +436,6 @@ export async function runPiWrapup(
 						// chunks are downgraded based on readSessionChunk().hasMore.
 						forceKeepLastCompartment: true,
 						onPublished: () => {
-							updateStatusLine(ctx, { db: deps.db, projectIdentity: ctx.cwd });
 							signalPiDeferredHistoryRefresh(sessionId);
 							signalPiDeferredMaterialization(sessionId);
 						},
@@ -518,7 +516,7 @@ async function acquireCompartmentLeaseEventually(
 ): Promise<LeaseAcquireResult> {
 	const waitStartedAt = Date.now();
 	const remainingMs = (): number => Math.max(0, waitStartedAt + maxWaitMs - Date.now());
-	for (;;) {
+	for (; ;) {
 		if (remainingMs() <= 0) return { ok: false, reason: "timeout" };
 		const holderId = crypto.randomUUID();
 		const lease = acquireCompartmentLease(db, sessionId, holderId);

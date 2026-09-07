@@ -70,7 +70,7 @@
  */
 
 import type { ExtensionContext } from "@oh-my-pi/pi-coding-agent";
-import type { RawMessage } from "#core/hooks/read-session-raw";
+import type { RawMessage, RawMessageParts } from "#core/hooks/read-session-raw";
 import { HANDOFF_CONTEXT_TYPE } from "./host/handoff-guard";
 
 /**
@@ -139,16 +139,10 @@ export function resolvePiStableId(
 	// 3. Unstable index id — last resort (synthetic / unresolved messages only).
 	const m = msg as { role?: string; timestamp?: number };
 	const role = m.role ?? "unknown";
-	return typeof m.timestamp === "number"
-		? `pi-msg-${index}-${m.timestamp}-${role}`
-		: `pi-msg-${index}-${role}`;
+	return typeof m.timestamp === "number" ? `pi-msg-${index}-${m.timestamp}-${role}` : `pi-msg-${index}-${role}`;
 }
 
-export function isMidTurnPi(
-	event: unknown,
-	_sessionId: string,
-	branchEntries?: readonly unknown[] | null,
-): boolean {
+export function isMidTurnPi(event: unknown, _sessionId: string, branchEntries?: readonly unknown[] | null): boolean {
 	const messages = (event as { messages?: unknown })?.messages;
 	if (!Array.isArray(messages)) return false;
 
@@ -279,9 +273,7 @@ export function readPiSessionMessages(ctx: ExtensionContext): RawMessage[] {
  * `getBranch()` exactly once per event (a perf invariant — the branch is the
  * whole JSONL); this must reuse that read, not re-walk.
  */
-export function findLastModelKeyFromBranch(
-	entries: readonly unknown[] | null | undefined,
-): string | undefined {
+export function findLastModelKeyFromBranch(entries: readonly unknown[] | null | undefined): string | undefined {
 	if (!Array.isArray(entries)) return undefined;
 
 	// Walk backwards: the last model_change is the session's current model.
@@ -313,7 +305,7 @@ function rawEntryVersion(entry: unknown): string | number {
 }
 
 function attachPiPartVersion(parts: unknown[], version: string | number): unknown[] {
-	return parts.map((part) => {
+	return parts.map(part => {
 		if (part === null || typeof part !== "object" || Array.isArray(part)) return part;
 		try {
 			Object.defineProperty(part, "__magicContextPartUpdatedAt", {
@@ -339,6 +331,7 @@ export function convertEntriesToRawMessages(entries: unknown[]): RawMessage[] {
 	// Buffer for tool-result runs waiting to fold into the next user
 	// message. Each item is the synthesized "tool" part shape.
 	let pendingToolParts: unknown[] = [];
+	let pendingToolSources: NonNullable<RawMessageParts["sourceLines"]> = [];
 	// Track the first real toolResult entry id contributing to the current
 	// pending buffer. When tool-results fold into a synthetic user (the
 	// toolResult→assistant transition pattern, which is the common case
@@ -382,7 +375,15 @@ export function convertEntriesToRawMessages(entries: unknown[]): RawMessage[] {
 
 		if (role === "toolResult") {
 			const version = rawEntryVersion(entry);
-			pendingToolParts.push(...attachPiPartVersion(synthesizeToolResultParts(msg), version));
+			const parts = synthesizeToolResultParts(msg);
+			pendingToolParts.push(...attachPiPartVersion(parts, version));
+			const part = parts[0] as { callID?: unknown; state?: { output?: unknown } } | undefined;
+			pendingToolSources.push({
+				messageId: entry.id,
+				role: "tool",
+				sourceText: typeof part?.state?.output === "string" ? part.state.output : "",
+				...(typeof part?.callID === "string" ? { toolCallId: part.callID } : {}),
+			});
 			if (pendingFirstRealId === "") {
 				pendingFirstRealId = entry.id;
 				pendingFirstRealVersion = version;
@@ -395,11 +396,10 @@ export function convertEntriesToRawMessages(entries: unknown[]): RawMessage[] {
 			// (they precede the user's own content in real conversation
 			// order, matching legacy host's flow).
 			const version = rawEntryVersion(entry);
-			const parts: unknown[] = [
-				...pendingToolParts,
-				...attachPiPartVersion(synthesizeUserParts(msg), version),
-			];
+			const parts: unknown[] = [...pendingToolParts, ...attachPiPartVersion(synthesizeUserParts(msg), version)];
+			const sourceLines = pendingToolSources;
 			pendingToolParts = [];
+			pendingToolSources = [];
 			pendingFirstRealId = "";
 			pendingFirstRealVersion = "";
 			result.push({
@@ -407,6 +407,7 @@ export function convertEntriesToRawMessages(entries: unknown[]): RawMessage[] {
 				id: entry.id,
 				role: "user",
 				parts,
+				sourceLines,
 				version,
 			});
 			continue;
@@ -426,9 +427,11 @@ export function convertEntriesToRawMessages(entries: unknown[]): RawMessage[] {
 					id: `${SYNTH_USER_ID_PREFIX}${pendingFirstRealId}`,
 					role: "user",
 					parts: pendingToolParts,
+					sourceLines: pendingToolSources,
 					version: pendingFirstRealVersion,
 				});
 				pendingToolParts = [];
+				pendingToolSources = [];
 				pendingFirstRealId = "";
 				pendingFirstRealVersion = "";
 			}
@@ -466,6 +469,7 @@ export function convertEntriesToRawMessages(entries: unknown[]): RawMessage[] {
 			id: `${SYNTH_USER_ID_PREFIX}${pendingFirstRealId}`,
 			role: "user",
 			parts: pendingToolParts,
+			sourceLines: pendingToolSources,
 			version: pendingFirstRealVersion,
 		});
 	}
@@ -498,7 +502,7 @@ function asHandoffContextEntry(value: unknown): { id: string; text: string } | u
 								(part as { type?: unknown }).type === "text" &&
 								typeof (part as { text?: unknown }).text === "string",
 						)
-						.map((part) => part.text)
+						.map(part => part.text)
 						.join("\n")
 				: "";
 	if (text.trim().length === 0) return undefined;

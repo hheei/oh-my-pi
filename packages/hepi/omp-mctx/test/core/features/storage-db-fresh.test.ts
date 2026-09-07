@@ -2,13 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import * as os from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { closeDatabase, openDatabase } from "../../../src/core/features/storage-db";
-import {
-	getChannel2NudgeClaim,
-	setChannel2NudgeState,
-} from "../../../src/core/features/storage-meta";
+import { closeDatabase, openDatabase, openDatabaseAsync } from "../../../src/core/features/storage-db";
+import { getChannel2NudgeClaim, setChannel2NudgeState } from "../../../src/core/features/storage-meta";
 import { Database } from "../../../src/core/shared/sqlite";
-import { closeQuietly } from "../../../src/core/shared/sqlite-helpers";
+import { closeQuietly, hasSqliteTable } from "../../../src/core/shared/sqlite-helpers";
 
 describe("fresh Magic Context database", () => {
 	let tmpRoot: string;
@@ -28,7 +25,7 @@ describe("fresh Magic Context database", () => {
 		rmSync(tmpRoot, { recursive: true, force: true });
 	});
 
-	test("creates the latest schema", () => {
+	test("creates the latest Window-only schema", () => {
 		const db = openDatabase();
 		if (!db) throw new Error("expected fresh database");
 
@@ -37,16 +34,14 @@ describe("fresh Magic Context database", () => {
 				db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{
 					name: string;
 				}>
-			).map((row) => row.name),
+			).map(row => row.name),
 		);
 		expect(tableNames.has("tags")).toBe(true);
-		expect(tableNames.has("memories")).toBe(true);
+		expect(tableNames.has("memories")).toBe(false);
 		expect(tableNames.has("compartments")).toBe(true);
 		expect(tableNames.has("v22_identity_rekey_map")).toBe(false);
 		const sessionMetaColumns = new Set(
-			(db.prepare("PRAGMA table_info(session_meta)").all() as Array<{ name: string }>).map(
-				(row) => row.name,
-			),
+			(db.prepare("PRAGMA table_info(session_meta)").all() as Array<{ name: string }>).map(row => row.name),
 		);
 		expect(sessionMetaColumns.has("last_todo_state")).toBe(false);
 		expect(sessionMetaColumns.has("todo_anchor_message_id")).toBe(false);
@@ -71,12 +66,35 @@ describe("fresh Magic Context database", () => {
 		});
 	});
 
-	test("rejects databases with the removed migration ledger", () => {
+	test("does not upgrade a cached Window-only handle when legacy memory is requested", () => {
+		const windowDb = openDatabase({ memoryEnabled: false });
+		expect(hasSqliteTable(windowDb, "embedding_identity_active")).toBe(false);
+
+		const memoryDb = openDatabase({ memoryEnabled: true });
+		expect(memoryDb).toBe(windowDb);
+		expect(hasSqliteTable(memoryDb, "embedding_identity_active")).toBe(false);
+	});
+
+	test("does not upgrade a cached async Window-only handle when legacy memory is requested", async () => {
+		const windowDb = await openDatabaseAsync({ memoryEnabled: false });
+		expect(hasSqliteTable(windowDb, "embedding_identity_active")).toBe(false);
+
+		const memoryDb = await openDatabaseAsync({ memoryEnabled: true });
+		expect(memoryDb).toBe(windowDb);
+		expect(hasSqliteTable(memoryDb, "embedding_identity_active")).toBe(false);
+	});
+
+	test("opens databases with the removed migration ledger without rewriting it", () => {
 		const dbPath = join(tmpRoot, "legacy.db");
 		const legacy = new Database(dbPath);
 		legacy.exec("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY)");
 		closeQuietly(legacy);
 
-		expect(() => openDatabase(dbPath)).toThrow("legacy Magic Context database detected");
+		const reopened = openDatabase(dbPath);
+		expect(
+			reopened.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'").get(),
+		).toEqual({
+			name: "schema_migrations",
+		});
 	});
 });

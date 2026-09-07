@@ -5,6 +5,9 @@ import { isSystemDirective, removeSystemReminders } from "../shared/system-direc
 export interface SessionChunkLine {
 	ordinal: number;
 	messageId: string;
+	role?: string;
+	sourceText?: string;
+	toolCallId?: string;
 }
 
 export interface ChunkBlock {
@@ -32,9 +35,7 @@ export function hasMeaningfulUserText(parts: unknown[]): boolean {
 		if (candidate.type !== "text" || typeof candidate.text !== "string") continue;
 		if (candidate.ignored === true) continue;
 
-		const cleaned = removeSystemReminders(candidate.text)
-			.replace(OMO_INTERNAL_INITIATOR_MARKER, "")
-			.trim();
+		const cleaned = removeSystemReminders(candidate.text).replace(OMO_INTERNAL_INITIATOR_MARKER, "").trim();
 
 		if (!cleaned) continue;
 		if (isSystemDirective(cleaned)) continue;
@@ -150,8 +151,7 @@ export function formatBlock(block: ChunkBlock): string {
 		block.startOrdinal === block.endOrdinal
 			? `[${block.startOrdinal}]`
 			: `[${block.startOrdinal}-${block.endOrdinal}]`;
-	const commitSuffix =
-		block.commitHashes.length > 0 ? ` commits: ${block.commitHashes.join(", ")}` : "";
+	const commitSuffix = block.commitHashes.length > 0 ? ` commits: ${block.commitHashes.join(", ")}` : "";
 	return `${range} ${block.role}:${commitSuffix} ${block.parts.join(" / ")}`;
 }
 
@@ -168,10 +168,7 @@ export function extractCommitHashes(text: string): string[] {
 	return hashes;
 }
 
-export function compactTextForSummary(
-	text: string,
-	role: string,
-): { text: string; commitHashes: string[] } {
+export function compactTextForSummary(text: string, role: string): { text: string; commitHashes: string[] } {
 	const commitHashes = role === "assistant" ? extractCommitHashes(text) : [];
 	if (commitHashes.length === 0 || !COMMIT_VERB_PATTERN.test(text)) {
 		return { text, commitHashes };

@@ -213,7 +213,7 @@ describe("omp-mctx enabled factory smoke", () => {
 			__setOmpMctxPluginSettingsForTests(null);
 		}
 	});
-	test("registers legacy Memory only after explicit opt-in", async () => {
+	test("does not register legacy Memory after explicit opt-in", async () => {
 		const root = mkdtempSync(join(tmpdir(), "omp-mctx-memory-enable-"));
 		process.env.MAGIC_CONTEXT_TEST_DATA_DIR = root;
 		process.env.OMP_CODING_AGENT_DIR = root;
@@ -221,7 +221,7 @@ describe("omp-mctx enabled factory smoke", () => {
 		delete process.env.PI_CODING_AGENT_DIR;
 		__setOmpMctxPluginSettingsForTests({
 			enabled: true,
-			memoryEnabled: true,
+			memoryEnabled: false,
 			dreamerEnabled: false,
 			historianEnabled: false,
 		});
@@ -229,8 +229,8 @@ describe("omp-mctx enabled factory smoke", () => {
 
 		await magicContextPiExtension(pi);
 
-		expect(tools).toContain("ctx_memory");
-		expect(commands).toContain("ctx-embed");
+		expect(tools).not.toContain("ctx_memory");
+		expect(commands).not.toContain("ctx-embed");
 		const dbPath = join(root, "extensions", "omp-mctx", "context.db");
 		const inspectionDb = new Database(dbPath);
 		try {
@@ -238,7 +238,7 @@ describe("omp-mctx enabled factory smoke", () => {
 				inspectionDb
 					.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'memories'")
 					.get(),
-			).toBeDefined();
+			).toBeNull();
 		} finally {
 			closeQuietly(inspectionDb);
 		}

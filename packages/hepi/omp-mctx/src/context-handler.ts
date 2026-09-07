@@ -25,6 +25,7 @@
 
 import * as crypto from "node:crypto";
 import type { ContextEvent, ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import type { AgentMemoryClientPort } from "./agentmemory/client";
 import {
 	acquireCompartmentLease,
 	COMPARTMENT_LEASE_RENEWAL_MS,
@@ -116,10 +117,7 @@ import {
 import { captureLkgSlot, replayLkg, resolveLkgModelKeys } from "#core/hooks/lkg-replay";
 import { getSlot, noteEntry, type LkgEntryNote } from "#core/hooks/lkg-slot";
 import { saveLkgSlotToDb } from "#core/hooks/lkg-persist";
-import {
-	isLoudTransformAbort,
-	RawFallbackContextLimitError,
-} from "#core/hooks/raw-fallback-context-limit";
+import { isLoudTransformAbort, RawFallbackContextLimitError } from "#core/hooks/raw-fallback-context-limit";
 import { estimateTokens } from "#core/hooks/read-session-formatting";
 import type { MessageLike } from "#core/hooks/transform-operations";
 import { markNoteNudgeDelivered, onNoteTrigger, peekNoteNudgeText } from "#core/hooks/note-nudger";
@@ -133,15 +131,9 @@ import {
 import { readRawSessionMessages, setRawMessageProvider } from "#core/hooks/read-session-chunk";
 import { invalidateTrueRawTokenCache } from "#core/hooks/read-session-true-raw-tokens";
 import { modelAcceptsEmptyContent } from "#core/hooks/sentinel";
-import {
-	buildEditSupersessionReclaim,
-	buildSupersessionReclaimOps,
-} from "#core/hooks/supersession-reclaim";
+import { buildEditSupersessionReclaim, buildSupersessionReclaimOps } from "#core/hooks/supersession-reclaim";
 import { stripTagPrefix } from "#core/hooks/tag-content-primitives";
-import {
-	advanceToolReclaimWatermarkToCurrentMax,
-	buildSyntheticToolReclaimOps,
-} from "#core/hooks/tool-reclaim";
+import { advanceToolReclaimWatermarkToCurrentMax, buildSyntheticToolReclaimOps } from "#core/hooks/tool-reclaim";
 import { escalationBands } from "#core/shared/escalation-bands";
 import { log, sessionLog } from "#core/shared/logger";
 import { isSaneLimit } from "#core/shared/models-dev-cache";
@@ -156,11 +148,7 @@ import {
 } from "./compaction-marker-manager-pi";
 import { commitPiCompactionModeRecord, reconcilePiCompactionMode } from "./compaction-off-pi";
 import { hasPiTransformTimingObserver, recordPiTransformTiming } from "./context-perf-hooks";
-import {
-	clearPiChannel1State,
-	computeTailTokenEstimatePi,
-	setPiChannel1Baseline,
-} from "./ctx-reduce-nudge-pi";
+import { clearPiChannel1State, computeTailTokenEstimatePi, setPiChannel1Baseline } from "./ctx-reduce-nudge-pi";
 import { detectRecentCommit } from "./detect-recent-commit";
 import { ensureProjectRegisteredFromPiDirectory } from "./embedding-bootstrap";
 import { applyPiHeuristicCleanup, type PiHeuristicCleanupResult } from "./heuristic-cleanup-pi";
@@ -276,9 +264,7 @@ export const __test = {
 			persistStableIdSchemeForRun = updateSessionMeta;
 		};
 	},
-	setAfterFallbackAdoptionForTests(
-		fn: ((stableIdSchemeCutover: boolean) => void) | undefined,
-	): () => void {
+	setAfterFallbackAdoptionForTests(fn: ((stableIdSchemeCutover: boolean) => void) | undefined): () => void {
 		afterFallbackAdoptionForTests = fn;
 		return () => {
 			afterFallbackAdoptionForTests = undefined;
@@ -372,10 +358,7 @@ const liveModelBySession = new Map<string, string>();
 const taggedStableMessageIdsBySession = new Map<string, Set<string>>();
 const taggersBySession = new Map<string, Tagger>();
 
-function recordSuccessfulTaggedMessageIds(
-	sessionId: string,
-	entryIds: readonly (string | undefined)[],
-): void {
+function recordSuccessfulTaggedMessageIds(sessionId: string, entryIds: readonly (string | undefined)[]): void {
 	const liveRealIds = new Set<string>();
 	for (const entryId of entryIds) {
 		if (entryId && !entryId.startsWith("pi-msg-")) liveRealIds.add(entryId);
@@ -384,14 +367,8 @@ function recordSuccessfulTaggedMessageIds(
 }
 
 const piMessageTokenCacheBySession = new Map<string, Map<string, PiMessageTokenCacheEntry>>();
-const piTagTextTokenCacheBySession = new Map<
-	string,
-	Map<string, { text: string; tokenCount: number }>
->();
-const piTagToolTokenCacheBySession = new Map<
-	string,
-	Map<string, { text: string; tokenCount: number }>
->();
+const piTagTextTokenCacheBySession = new Map<string, Map<string, { text: string; tokenCount: number }>>();
+const piTagToolTokenCacheBySession = new Map<string, Map<string, { text: string; tokenCount: number }>>();
 const piTextIdentitySourceCacheBySession = new Map<string, Map<number, string>>();
 
 interface PiTextIdentityPlan {
@@ -413,9 +390,7 @@ function buildPiTextIdentityPlan(
 		if (messageId === undefined) continue;
 		currentSourcesByMessageId.set(
 			messageId,
-			message.parts
-				.filter((part) => part.kind === "text")
-				.map((part) => stripTagPrefix(part.getText() ?? "")),
+			message.parts.filter(part => part.kind === "text").map(part => stripTagPrefix(part.getText() ?? "")),
 		);
 	}
 
@@ -447,8 +422,8 @@ function buildPiTextIdentityPlan(
 	}
 	const missingTagIds = Array.from(legacyRowsByMessageId.values())
 		.flat()
-		.map((row) => row.tagId)
-		.filter((tagId) => !sourceCache.has(tagId));
+		.map(row => row.tagId)
+		.filter(tagId => !sourceCache.has(tagId));
 	for (let offset = 0; offset < missingTagIds.length; offset += 500) {
 		const loaded = getSourceContents(db, sessionId, missingTagIds.slice(offset, offset + 500));
 		for (const [tagId, source] of loaded) sourceCache.set(tagId, source);
@@ -466,8 +441,7 @@ function buildPiTextIdentityPlan(
 		const vectorMatches =
 			legacyRows.length === currentSources.length &&
 			legacyRows.every(
-				(row, index) =>
-					row.ordinal === index && sourceCache.get(row.tagId) === currentSources[index],
+				(row, index) => row.ordinal === index && sourceCache.get(row.tagId) === currentSources[index],
 			);
 		if (!vectorMatches) driftedMessageIds.add(messageId);
 	}
@@ -517,7 +491,7 @@ function readPiSessionMessageById(
 	ctx: ExtensionContext,
 	messageId: string,
 ): ReturnType<typeof readPiSessionMessages>[number] | null {
-	return readPiSessionMessages(ctx).find((message) => message.id === messageId) ?? null;
+	return readPiSessionMessages(ctx).find(message => message.id === messageId) ?? null;
 }
 
 function convertLocatedPiUserEntry(
@@ -542,9 +516,9 @@ function convertLocatedPiUserEntry(
 		rawOrdinal += 1;
 		if (record.id === messageId && role === "user") {
 			const start = pendingToolStart >= 0 ? pendingToolStart : index;
-			const converted = convertEntriesToRawMessages(
-				branchEntries.slice(start, index + 1) as unknown[],
-			).find((message) => message.id === messageId);
+			const converted = convertEntriesToRawMessages(branchEntries.slice(start, index + 1) as unknown[]).find(
+				message => message.id === messageId,
+			);
 			return converted ? { ...converted, ordinal: rawOrdinal } : null;
 		}
 		pendingToolStart = -1;
@@ -691,21 +665,14 @@ function summarizeTransformError(error: unknown): string {
 		: normalized || "Unknown transform error";
 }
 
-function persistLastTransformErrorIfChanged(
-	db: ContextDatabase,
-	sessionId: string,
-	summary: string,
-): void {
+function persistLastTransformErrorIfChanged(db: ContextDatabase, sessionId: string, summary: string): void {
 	try {
 		const current = getOrCreateSessionMeta(db, sessionId).lastTransformError;
 		if (current !== summary) {
 			updateSessionMeta(db, sessionId, { lastTransformError: summary });
 		}
 	} catch (err) {
-		sessionLog(
-			sessionId,
-			`transform error persistence failed: ${err instanceof Error ? err.message : String(err)}`,
-		);
+		sessionLog(sessionId, `transform error persistence failed: ${err instanceof Error ? err.message : String(err)}`);
 	}
 }
 
@@ -716,10 +683,7 @@ function clearLastTransformErrorIfSet(db: ContextDatabase, sessionId: string): v
 			updateSessionMeta(db, sessionId, { lastTransformError: null });
 		}
 	} catch (err) {
-		sessionLog(
-			sessionId,
-			`transform error clear failed: ${err instanceof Error ? err.message : String(err)}`,
-		);
+		sessionLog(sessionId, `transform error clear failed: ${err instanceof Error ? err.message : String(err)}`);
 	}
 }
 
@@ -805,8 +769,18 @@ export interface PiHistorianOptions {
 	 *  historian user observations are persisted as candidates. */
 	userMemoriesEnabled?: boolean | undefined;
 	language?: string | undefined;
-	/** Notify UI/status surfaces after historian state changes. */
-	onStatusChange?: ((ctx: ExtensionContext, sessionId: string) => void) | undefined;
+	/** mctx-owned agentmemory bridge for scoped Historian recall/publication. */
+	agentMemory?:
+		| {
+				enabled: boolean;
+				historianRetrieval: boolean;
+				project: string;
+				agentId?: string;
+				activeSessionId?: (ompSessionId: string) => string | undefined;
+				client: AgentMemoryClientPort;
+		  }
+		| undefined;
+	agentMemoryTaint?: { isHostEntryTainted?: (hostEntryId: string) => boolean };
 	/**
 	 * Execute-threshold percentage used by the trigger logic to compute
 	 * pressure-driven trigger points. Mirrors legacy host's
@@ -940,9 +914,7 @@ export interface PiContextHandlerOptions {
 	compactionOff?: boolean | undefined;
 	/** Allow a session started exactly in the canonical home directory only when user-level configuration enables it. */
 	allowHomeProject?: boolean | undefined;
-	maybeAutoEmbedSession?:
-		| ((sessionId: string, projectDir: string, projectIdentity: string) => void)
-		| undefined;
+	maybeAutoEmbedSession?: ((sessionId: string, projectDir: string, projectIdentity: string) => void) | undefined;
 }
 
 /**
@@ -1100,7 +1072,6 @@ function collectMessageEntryIds(
 		}
 		return false;
 	};
-
 	if (compactionIndex >= 0) {
 		// Index 0 = synthetic compaction summary — no SessionEntry id.
 		ids.push(undefined);
@@ -1300,12 +1271,7 @@ export function collectMessageEntryIdsByRef(
 function addPiBranchEntryToLookup(lookup: PiBranchEntryLookup, entry: unknown): void {
 	if (!entry || typeof entry !== "object") return;
 	const row = entry as { type?: unknown; id?: unknown; message?: unknown };
-	if (
-		row.type !== "message" ||
-		typeof row.id !== "string" ||
-		!row.message ||
-		typeof row.message !== "object"
-	) {
+	if (row.type !== "message" || typeof row.id !== "string" || !row.message || typeof row.message !== "object") {
 		return;
 	}
 	lookup.entryIdByMessageRef.set(row.message as object, row.id);
@@ -1338,7 +1304,7 @@ function buildPiAlignedEntryIds(entries: readonly unknown[]): (string | undefine
 		break;
 	}
 	if (compactionIndex < 0) {
-		return entries.filter(isPiContextEmitEligible).map((entry) => entry.id);
+		return entries.filter(isPiContextEmitEligible).map(entry => entry.id);
 	}
 
 	const ids: (string | undefined)[] = [undefined];
@@ -1388,10 +1354,7 @@ function buildEntryIdByRefMap(branchEntries: readonly unknown[] | null): Map<obj
 	return branchEntries ? getPiBranchEntryLookup(branchEntries).entryIdByMessageRef : new Map();
 }
 
-function readPiBranchEntriesForContext(
-	ctx: ExtensionContext,
-	sessionId: string,
-): readonly unknown[] | null {
+function readPiBranchEntriesForContext(ctx: ExtensionContext, sessionId: string): readonly unknown[] | null {
 	const sm = ctx.sessionManager as
 		| {
 				getLeafId?: (() => string | null) | undefined;
@@ -1465,9 +1428,7 @@ function readPiBranchEntriesForContext(
 
 		if (cached && cachedAncestorIndex === cached.entries.length - 1) {
 			const entries = [...cached.entries, ...suffix];
-			if (
-				suffix.some((entry) => (entry as { type?: unknown } | undefined)?.type === "compaction")
-			) {
+			if (suffix.some(entry => (entry as { type?: unknown } | undefined)?.type === "compaction")) {
 				return installProjection(leafId, entries);
 			}
 			for (let index = 0; index < suffix.length; index += 1) {
@@ -1496,10 +1457,7 @@ function readPiBranchEntriesForContext(
 				: suffix;
 		return installProjection(leafId, entries);
 	} catch (error) {
-		sessionLog(
-			sessionId,
-			`Pi branch projection failed: ${error instanceof Error ? error.message : String(error)}`,
-		);
+		sessionLog(sessionId, `Pi branch projection failed: ${error instanceof Error ? error.message : String(error)}`);
 		try {
 			return fallbackToBranch();
 		} catch (fallbackError) {
@@ -1530,9 +1488,7 @@ function piMessageEntryFingerprint(message: unknown): string | null {
 		.slice(0, 16);
 	return JSON.stringify([
 		typeof record.responseId === "string" ? record.responseId : null,
-		typeof record.timestamp === "number" || typeof record.timestamp === "string"
-			? record.timestamp
-			: null,
+		typeof record.timestamp === "number" || typeof record.timestamp === "string" ? record.timestamp : null,
 		record.role,
 		typeof record.toolCallId === "string" ? record.toolCallId : null,
 		firstTextHash,
@@ -1620,9 +1576,7 @@ function buildPiToolOwnerMap(
 	return map;
 }
 
-function parsePiFallbackToolOwnerId(
-	ownerMsgId: string,
-): { timestamp: number; role: string } | null {
+function parsePiFallbackToolOwnerId(ownerMsgId: string): { timestamp: number; role: string } | null {
 	const match = /^pi-msg-\d+-(\d+)-(.+)$/.exec(ownerMsgId);
 	if (!match) return null;
 	const timestamp = Number(match[1]);
@@ -1693,15 +1647,12 @@ function adoptPiFallbackTags(
 	// only advisory: a sibling connection can commit a fallback row after the
 	// fingerprint map is built. Re-probe negatives here so the decision to skip
 	// observes commits that happened before adoption starts.
-	const hasFallbackMessageTags =
-		options.hasFallbackMessageTags === true || hasPiFallbackMessageTags(db, sessionId);
+	const hasFallbackMessageTags = options.hasFallbackMessageTags === true || hasPiFallbackMessageTags(db, sessionId);
 	const hasFallbackToolOwnerTags =
 		options.hasFallbackToolOwnerTags === true || hasPiFallbackToolOwnerTags(db, sessionId);
 	const shouldRunMessageMigration =
 		hasFallbackMessageTags && hasAdoptablePiFallbackMessageTags(db, sessionId, fingerprintById);
-	const shouldRunToolOwnerMigration = Boolean(
-		options.messages && options.resolveStableId && hasFallbackToolOwnerTags,
-	);
+	const shouldRunToolOwnerMigration = Boolean(options.messages && options.resolveStableId && hasFallbackToolOwnerTags);
 	if (!shouldRunMessageMigration && !shouldRunToolOwnerMigration) return;
 
 	runImmediateTransaction(db, () => {
@@ -1729,13 +1680,7 @@ function adoptPiFallbackTags(
 					const partOrdinal = ordinalMatch[1];
 					if (partOrdinal === undefined) continue;
 					const realContentId = `${realMessageId}:p${partOrdinal}`;
-					const adoption = adoptPiFallbackMessageTag(
-						db,
-						sessionId,
-						c.tagNumber,
-						c.messageId,
-						realContentId,
-					);
+					const adoption = adoptPiFallbackMessageTag(db, sessionId, c.tagNumber, c.messageId, realContentId);
 					if (adoption.action !== "skipped") {
 						// Drop stale fallback and collision aliases, then bind the survivor
 						// under the real key so the same-pass exact lookup hits it.
@@ -1792,10 +1737,7 @@ function adoptPiFallbackTags(
  * monotonic counter, assignment map) across `context` events so tag
  * numbers stay stable for the duration of the Pi session.
  */
-export function registerPiContextHandler(
-	pi: ExtensionAPI,
-	baseOptions: PiContextHandlerOptions,
-): void {
+export function registerPiContextHandler(pi: ExtensionAPI, baseOptions: PiContextHandlerOptions): void {
 	const tagger = createTagger();
 
 	// Pi can switch projects mid-process (`/cd`, multi-root). A scheduler is
@@ -1830,9 +1772,7 @@ export function registerPiContextHandler(
 			const tFindSession = performance.now();
 			const sessionId = resolveSessionId(ctx);
 			if (sessionId === undefined) {
-				log(
-					"[magic-context][pi] context event fired with no session id (falling through unmodified)",
-				);
+				log("[magic-context][pi] context event fired with no session id (falling through unmodified)");
 				return;
 			}
 			sessionIdForError = sessionId;
@@ -1846,15 +1786,9 @@ export function registerPiContextHandler(
 			const options = baseOptions.resolveForProject?.(projectDirectory) ?? baseOptions;
 			const schedulerConfig = options.scheduler ?? DEFAULT_SCHEDULER_CONFIG;
 			const scheduler = schedulerFor(options);
-			const projectIdentity =
-				resolveProjectIdentityForSession(projectDirectory, options.allowHomeProject) ?? "";
+			const projectIdentity = resolveProjectIdentityForSession(projectDirectory, options.allowHomeProject) ?? "";
 			updateSessionProjectTracking(sessionId, projectIdentity, options.db);
-			logTransformTiming(
-				sessionId,
-				"findSessionId",
-				tFindSession,
-				`messages=${event.messages.length}`,
-			);
+			logTransformTiming(sessionId, "findSessionId", tFindSession, `messages=${event.messages.length}`);
 
 			const tEntryBranch = performance.now();
 			const branchEntries = readPiBranchEntriesForContext(ctx, sessionId);
@@ -1865,9 +1799,7 @@ export function registerPiContextHandler(
 			});
 			const rawMessageProvider = {
 				readMessages: () =>
-					branchEntries !== null
-						? convertEntriesToRawMessages([...branchEntries])
-						: readPiSessionMessages(ctx),
+					branchEntries !== null ? convertEntriesToRawMessages([...branchEntries]) : readPiSessionMessages(ctx),
 				readMessageById: (messageId: string) => readPiSessionMessageById(ctx, messageId),
 			};
 			rawMessageProviderUnregistersBySession.get(sessionId)?.();
@@ -1901,12 +1833,7 @@ export function registerPiContextHandler(
 					strictEntryIds,
 				);
 				if (removed > 0) {
-					logTransformTiming(
-						sessionId,
-						"cachedBoundaryEarlyTrim",
-						tEntryBranch,
-						`removed=${removed}`,
-					);
+					logTransformTiming(sessionId, "cachedBoundaryEarlyTrim", tEntryBranch, `removed=${removed}`);
 				}
 			}
 			// Splice-safe message→entryId map keyed by reference. runPipeline
@@ -1938,9 +1865,7 @@ export function registerPiContextHandler(
 			logTransformTiming(sessionId, "findLastUserMessageId", tLastUser);
 			const tMessageIndexScheduling = performance.now();
 			if (latestUser) {
-				const located = branchEntries
-					? convertLocatedPiUserEntry(branchEntries, latestUser.messageId)
-					: null;
+				const located = branchEntries ? convertLocatedPiUserEntry(branchEntries, latestUser.messageId) : null;
 				scheduleIncrementalIndex(
 					options.db,
 					sessionId,
@@ -1955,9 +1880,7 @@ export function registerPiContextHandler(
 			// counter is already populated. Required because the tag
 			// counter persists across plugin restarts via the
 			// `session_meta.counter` column.
-			const taggerFloor = strictEntryIds
-				? deriveTagLoadFloor(options.db, sessionId, strictEntryIds)
-				: 0;
+			const taggerFloor = strictEntryIds ? deriveTagLoadFloor(options.db, sessionId, strictEntryIds) : 0;
 			tagger.initFromDb(sessionId, options.db, taggerFloor);
 			taggersBySession.set(sessionId, tagger);
 			const isFirstContextPassForSession = !firstContextPassSeenBySession.has(sessionId);
@@ -1984,9 +1907,7 @@ export function registerPiContextHandler(
 			const previousModelKey = liveModelBySession.get(sessionId);
 			const currentModelKey = resolvePiContextModelKey(ctx);
 			const modelChanged =
-				previousModelKey !== undefined &&
-				currentModelKey !== undefined &&
-				previousModelKey !== currentModelKey;
+				previousModelKey !== undefined && currentModelKey !== undefined && previousModelKey !== currentModelKey;
 			if (currentModelKey !== undefined) {
 				liveModelBySession.set(sessionId, currentModelKey);
 			}
@@ -2106,10 +2027,7 @@ export function registerPiContextHandler(
 			// must NOT be recomputed below. The fallback path (raw getContextUsage)
 			// uses Pi's own denominator and DOES need correcting.
 			let usedPersistedUsage = false;
-			if (
-				sessionMetaForUsage.lastContextPercentage > 0 &&
-				sessionMetaForUsage.lastInputTokens > 0
-			) {
+			if (sessionMetaForUsage.lastContextPercentage > 0 && sessionMetaForUsage.lastInputTokens > 0) {
 				usagePercentage = sessionMetaForUsage.lastContextPercentage;
 				usageInputTokens = sessionMetaForUsage.lastInputTokens;
 				usedPersistedUsage = true;
@@ -2121,9 +2039,7 @@ export function registerPiContextHandler(
 			// (isSaneLimit, not `> 0`). A garbage-but-positive window (e.g. a
 			// transient 6748) must be REJECTED here, not trusted — otherwise the
 			// history budget collapses to a few hundred tokens and over-archives.
-			let usageContextLimit = isSaneLimit(piUsage?.contextWindow)
-				? piUsage.contextWindow
-				: undefined;
+			let usageContextLimit = isSaneLimit(piUsage?.contextWindow) ? piUsage.contextWindow : undefined;
 			let detectedContextLimit: number | undefined;
 
 			// Overflow recovery: a previous LLM call ended with a
@@ -2200,9 +2116,7 @@ export function registerPiContextHandler(
 					sessionId,
 				},
 			);
-			const { forceMaterializationPercentage } = escalationBands(
-				effectiveExecuteThresholdPercentage,
-			);
+			const { forceMaterializationPercentage } = escalationBands(effectiveExecuteThresholdPercentage);
 			// Fallback-path percentage correction: when we DIDN'T use persisted
 			// usage, `usagePercentage` is on Pi's raw denominator — which is wrong
 			// once we've corrected the limit (detected-overflow cap, or a sane
@@ -2298,10 +2212,8 @@ export function registerPiContextHandler(
 			// bust without re-keying anything, then either false-complete (if we
 			// stamped) or churn the placeholder set under pi-msg-* ids. Defer the
 			// whole cutover to a later pass when getBranch() succeeds.
-			const realEntryIdsAvailable =
-				strictEntryIds?.some((id) => typeof id === "string" && id.length > 0) ?? false;
-			const stableIdSchemeCutover =
-				storedStableIdScheme < PI_STABLE_ID_SCHEME && realEntryIdsAvailable;
+			const realEntryIdsAvailable = strictEntryIds?.some(id => typeof id === "string" && id.length > 0) ?? false;
+			const stableIdSchemeCutover = storedStableIdScheme < PI_STABLE_ID_SCHEME && realEntryIdsAvailable;
 			if (storedStableIdScheme < PI_STABLE_ID_SCHEME && !realEntryIdsAvailable) {
 				sessionLog(
 					sessionId,
@@ -2376,8 +2288,7 @@ export function registerPiContextHandler(
 
 			// At the derived force band, enable aggressive drop-all-tools mode.
 			// Mirrors legacy host transform-postprocess-phase.ts:145-146.
-			const forceMaterialization =
-				!options.compactionOff && usagePercentage >= forceMaterializationPercentage;
+			const forceMaterialization = !options.compactionOff && usagePercentage >= forceMaterializationPercentage;
 
 			// 95% emergency block: usage is dangerous enough that we
 			// MUST wait for any in-flight historian to finish so its
@@ -2600,11 +2511,7 @@ export function registerPiContextHandler(
 						tsMs: Date.now(),
 						decision: schedulerDecision,
 						materialized: result.materialized,
-						materializeReason: normalizeMaterializeReason(
-							"pi",
-							result.materializeReason,
-							result.materialized,
-						),
+						materializeReason: normalizeMaterializeReason("pi", result.materializeReason, result.materialized),
 						emergency: result.emergency,
 						droppedTokens: result.droppedTokens,
 						droppedCount: result.droppedCount,
@@ -2665,10 +2572,7 @@ export function registerPiContextHandler(
 					});
 				}
 			} catch (err) {
-				sessionLog(
-					sessionId,
-					`note nudges failed: ${err instanceof Error ? err.message : String(err)}`,
-				);
+				sessionLog(sessionId, `note nudges failed: ${err instanceof Error ? err.message : String(err)}`);
 			}
 			logTransformTiming(sessionId, "noteNudges", tNoteNudges);
 
@@ -2683,8 +2587,7 @@ export function registerPiContextHandler(
 						// Use the map produced after commits and splices because those operations
 						// can change the final message-reference to entry-ID mapping.
 						entryIdByRef: result.postCommitEntryIdByRef,
-						ensureProjectRegistered: () =>
-							ensureProjectRegisteredFromPiDirectory(projectDirectory, options.db),
+						ensureProjectRegistered: () => ensureProjectRegisteredFromPiDirectory(projectDirectory, options.db),
 						options: {
 							enabled: true,
 							scoreThreshold: options.autoSearch.scoreThreshold,
@@ -2694,10 +2597,7 @@ export function registerPiContextHandler(
 						},
 					});
 				} catch (err) {
-					sessionLog(
-						sessionId,
-						`auto-search failed: ${err instanceof Error ? err.message : String(err)}`,
-					);
+					sessionLog(sessionId, `auto-search failed: ${err instanceof Error ? err.message : String(err)}`);
 				}
 			}
 			logTransformTiming(sessionId, "autoSearch", tAutoSearch);
@@ -2752,11 +2652,7 @@ export function registerPiContextHandler(
 						// reclaimable (toolOutput) excludes the protected top-N tags
 						// (parity with legacy host) — the agent can't ctx_reduce those, so
 						// counting them would nag forever about undroppable tail output.
-						const agg = getActiveTagTokenAggregate(
-							options.db,
-							sessionId,
-							options.protectedTags ?? 20,
-						);
+						const agg = getActiveTagTokenAggregate(options.db, sessionId, options.protectedTags ?? 20);
 						tailToolTokens = agg.toolOutput;
 						liveTailTokens = agg.conversation + agg.toolCall;
 					} catch {
@@ -2771,10 +2667,7 @@ export function registerPiContextHandler(
 					const executeThresholdTokensPi = Math.round(
 						((usageContextLimit ?? 0) * resolvedExecuteThresholdPct) / 100,
 					);
-					const usableTokensPi = Math.max(
-						0,
-						executeThresholdTokensPi - usageInputTokens + liveTailTokens,
-					);
+					const usableTokensPi = Math.max(0, executeThresholdTokensPi - usageInputTokens + liveTailTokens);
 					// Same rationale as legacy host: a historian publish, emergency drop,
 					// or pending-op replay can shrink the tail without a ctx_reduce
 					// tool call, so a regrowth must not inherit a stale persisted band.
@@ -2836,17 +2729,9 @@ export function registerPiContextHandler(
 			const tWorkMetrics = performance.now();
 			try {
 				const metrics = computePiWorkMetrics(outputMessages as unknown[]);
-				setSessionWorkMetrics(
-					options.db,
-					sessionId,
-					metrics.newWorkTokens,
-					metrics.totalInputTokens,
-				);
+				setSessionWorkMetrics(options.db, sessionId, metrics.newWorkTokens, metrics.totalInputTokens);
 			} catch (err) {
-				sessionLog(
-					sessionId,
-					`work-metrics update failed: ${err instanceof Error ? err.message : String(err)}`,
-				);
+				sessionLog(sessionId, `work-metrics update failed: ${err instanceof Error ? err.message : String(err)}`);
 			}
 			logTransformTiming(sessionId, "workMetrics", tWorkMetrics);
 
@@ -2862,10 +2747,7 @@ export function registerPiContextHandler(
 					sessionId,
 					reason: "pi.stable-id-scheme.changed",
 				});
-				sessionLog(
-					sessionId,
-					`stable-id scheme cutover complete — stamped scheme=${PI_STABLE_ID_SCHEME}`,
-				);
+				sessionLog(sessionId, `stable-id scheme cutover complete — stamped scheme=${PI_STABLE_ID_SCHEME}`);
 			}
 			logTransformTiming(sessionId, "stableIdSchemePersist", tStableIdSchemePersist);
 
@@ -2958,16 +2840,9 @@ export function registerPiContextHandler(
 			}
 			const message = err instanceof Error ? err.message : String(err);
 			const stack = err instanceof Error ? err.stack : undefined;
-			log(
-				`[magic-context][pi] context handler failed (continuing without mutation): ${message}`,
-				stack,
-			);
+			log(`[magic-context][pi] context handler failed (continuing without mutation): ${message}`, stack);
 			if (sessionIdForError) {
-				persistLastTransformErrorIfChanged(
-					baseOptions.db,
-					sessionIdForError,
-					summarizeTransformError(err),
-				);
+				persistLastTransformErrorIfChanged(baseOptions.db, sessionIdForError, summarizeTransformError(err));
 			}
 			return;
 		}
@@ -3118,10 +2993,7 @@ function startPiCompartmentLeaseRenewal(
 	return setInterval(() => {
 		try {
 			if (!renewCompartmentLease(db, sessionId, holderId)) {
-				sessionLog(
-					sessionId,
-					"compartment lease renewal failed; publish will be skipped if holder is stale",
-				);
+				sessionLog(sessionId, "compartment lease renewal failed; publish will be skipped if holder is stale");
 			}
 		} catch (err) {
 			// A missed renewal is safe because the compartment lease has a five-minute TTL.
@@ -3133,9 +3005,7 @@ function startPiCompartmentLeaseRenewal(
 	}, COMPARTMENT_LEASE_RENEWAL_MS);
 }
 
-function ensureRunnablePiBoundaryForTests(
-	snapshot: ProtectedTailBoundarySnapshot,
-): ProtectedTailBoundarySnapshot {
+function ensureRunnablePiBoundaryForTests(snapshot: ProtectedTailBoundarySnapshot): ProtectedTailBoundarySnapshot {
 	if (process.env.NODE_ENV !== "test" || hasRunnableCompartmentWindow(snapshot)) {
 		return snapshot;
 	}
@@ -3160,10 +3030,7 @@ function hasEligiblePiCompartmentHistory(
 			return hasRunnableCompartmentWindow(ensureRunnablePiBoundaryForTests(boundarySnapshot));
 		}
 		const rawEligibility = getRawHistoryEligibility(db, sessionId);
-		return (
-			rawEligibility.hasRawBeyondLastCompartment &&
-			rawEligibility.offset <= rawEligibility.rawMessageCount
-		);
+		return rawEligibility.hasRawBeyondLastCompartment && rawEligibility.offset <= rawEligibility.rawMessageCount;
 	} catch (err) {
 		sessionLog(
 			sessionId,
@@ -3179,9 +3046,7 @@ function sendPiIgnoredNotification(ctx: ExtensionContext, message: string): void
 		try {
 			const result = uiNotify.call(ctx.ui, message);
 			if (result && typeof (result as PromiseLike<unknown>).then === "function") {
-				void Promise.resolve(result).catch((error) =>
-					sessionLog("pi", "UI notification rejected:", error),
-				);
+				void Promise.resolve(result).catch(error => sessionLog("pi", "UI notification rejected:", error));
 			}
 			return;
 		} catch {
@@ -3256,8 +3121,10 @@ function spawnPiHistorianRun(args: {
 				autoPromote: historian.autoPromote,
 				userMemoriesEnabled: historian.userMemoriesEnabled,
 				language: historian.language,
+				...(historian.agentMemory ? { agentMemory: historian.agentMemory } : {}),
+				...(historian.agentMemoryTaint ? { agentMemoryTaint: historian.agentMemoryTaint } : {}),
 				compartmentLeaseHolderId: holderId,
-				notifyIssue: (text) => {
+				notifyIssue: text => {
 					if (!isContextHandlerSessionActive(sessionId)) {
 						sessionLog(sessionId, "historian failure notice skipped after session context cleared");
 						return;
@@ -3269,7 +3136,6 @@ function spawnPiHistorianRun(args: {
 					});
 				},
 				onPublished: () => {
-					const sessionStillActive = isContextHandlerSessionActive(sessionId);
 					try {
 						clearEmergencyRecovery(db, sessionId);
 					} catch (err) {
@@ -3297,14 +3163,6 @@ function spawnPiHistorianRun(args: {
 					// so re-reading them would burn IO for nothing.
 					signalPiDeferredHistoryRefresh(sessionId);
 					signalPiDeferredMaterialization(sessionId);
-					if (sessionStillActive) {
-						historian.onStatusChange?.(ctx, sessionId);
-					} else {
-						sessionLog(
-							sessionId,
-							"historian publication recorded after session clear; status callback skipped",
-						);
-					}
 				},
 			});
 		} finally {
@@ -3314,12 +3172,8 @@ function spawnPiHistorianRun(args: {
 	})().finally(() => {
 		inFlightHistorian.delete(sessionId);
 		unregister();
-		if (isContextHandlerSessionActive(sessionId)) {
-			historian.onStatusChange?.(ctx, sessionId);
-		}
 	});
 	inFlightHistorian.set(sessionId, runPromise);
-	historian.onStatusChange?.(ctx, sessionId);
 }
 
 function resolvePiAppendCompaction(ctx: ExtensionContext): PiHistorianDeps["appendCompaction"] {
@@ -3441,12 +3295,7 @@ function maybeFireHistorian(args: {
 			// original implementation used; the +output token drift
 			// of ~0.1% is acceptable on the first turn before
 			// message_end runs.
-			if (
-				!piUsage ||
-				piUsage.tokens === null ||
-				piUsage.percent === null ||
-				piUsage.contextWindow === 0
-			) {
+			if (!piUsage || piUsage.tokens === null || piUsage.percent === null || piUsage.contextWindow === 0) {
 				sessionLog(
 					sessionId,
 					`historian trigger eval: no usage info yet (tokens=${piUsage?.tokens ?? "<no piUsage>"}, percent=${piUsage?.percent ?? "<no piUsage>"}, contextWindow=${piUsage?.contextWindow ?? "<no piUsage>"})`,
@@ -3466,12 +3315,7 @@ function maybeFireHistorian(args: {
 			};
 			usageSource = "piUsage fallback";
 		}
-		usage = applyForwardPressureFloor(
-			usage.percentage,
-			usage.inputTokens,
-			piUsage?.tokens,
-			usageContextLimit,
-		);
+		usage = applyForwardPressureFloor(usage.percentage, usage.inputTokens, piUsage?.tokens, usageContextLimit);
 		sessionLog(
 			sessionId,
 			`historian trigger eval: usage=${usage.percentage.toFixed(1)}% (${usage.inputTokens} tokens) [${usageSource}], checking trigger...`,
@@ -3506,9 +3350,7 @@ function maybeFireHistorian(args: {
 		triggerInputs.executeThresholdPercentage,
 	).forceMaterializationPercentage;
 	const boundaryContextLimit = triggerInputs.contextLimit;
-	const resolvePiBoundarySnapshot = (
-		emergencyTailScale?: 0.5 | 0.25,
-	): ProtectedTailBoundarySnapshot =>
+	const resolvePiBoundarySnapshot = (emergencyTailScale?: 0.5 | 0.25): ProtectedTailBoundarySnapshot =>
 		resolveProtectedTailBoundary(
 			resolveBoundaryContext({
 				db,
@@ -3528,13 +3370,8 @@ function maybeFireHistorian(args: {
 		// Derived band, not literal 80: under a raised execute threshold the
 		// emergency-scaled retry must not relax the boundary below the force
 		// band (same escalation class as the legacy host trigger's force gate).
-		if (
-			!hasRunnableCompartmentWindow(snapshot) &&
-			usage.percentage >= historianForceMaterializationPercentage
-		) {
-			snapshot = ensureRunnablePiBoundaryForTests(
-				resolvePiBoundarySnapshot(usage.percentage >= 95 ? 0.25 : 0.5),
-			);
+		if (!hasRunnableCompartmentWindow(snapshot) && usage.percentage >= historianForceMaterializationPercentage) {
+			snapshot = ensureRunnablePiBoundaryForTests(resolvePiBoundarySnapshot(usage.percentage >= 95 ? 0.25 : 0.5));
 		}
 		return snapshot;
 	};
@@ -3556,8 +3393,7 @@ function maybeFireHistorian(args: {
 			if (failureState.failureCount > 0) {
 				boundarySnapshot = resolveRunnablePiBoundarySnapshot();
 			}
-			const shouldRecoverOnFirstPass =
-				failureState.failureCount > 0 && boundarySnapshot !== undefined;
+			const shouldRecoverOnFirstPass = failureState.failureCount > 0 && boundarySnapshot !== undefined;
 			if (shouldRecoverOnFirstPass) {
 				triggered = true;
 				sessionLog(
@@ -4063,8 +3899,7 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 		args.schedulerDecision === "execute" ||
 		args.forceMaterialization === true ||
 		args.contextUsage.percentage >= forceMaterializationPercentage;
-	const deferredMaterializeEligible =
-		canConsumeDeferredLate && deferredMaterializationSessions.has(args.sessionId);
+	const deferredMaterializeEligible = canConsumeDeferredLate && deferredMaterializationSessions.has(args.sessionId);
 	// Known-bust fold: if Pi m[0] is going to HARD-fold this pass (model /
 	// system-hash / ttl-idle / project-memory epoch / mutation id / upgrade —
 	// whatever mustMaterializePi decides), the Anthropic prefix is being
@@ -4089,11 +3924,9 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 					// invalid cache_ttl → 5m default (parity with execute-status)
 				}
 				return {
-					systemHash:
-						typeof hardMeta.systemPromptHash === "string" ? hardMeta.systemPromptHash : "",
+					systemHash: typeof hardMeta.systemPromptHash === "string" ? hardMeta.systemPromptHash : "",
 					modelKey: liveModelBySession.get(args.sessionId) ?? "",
-					cacheExpired:
-						hardMeta.lastResponseTime > 0 && Date.now() - hardMeta.lastResponseTime >= piTtlMs,
+					cacheExpired: hardMeta.lastResponseTime > 0 && Date.now() - hardMeta.lastResponseTime >= piTtlMs,
 					lastResponseTime: hardMeta.lastResponseTime,
 				};
 			})()
@@ -4256,7 +4089,7 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 	const pendingOperationTags = getTagsForPendingOperations(
 		args.db,
 		args.sessionId,
-		pendingOps.map((operation) => operation.tagId),
+		pendingOps.map(operation => operation.tagId),
 		args.protectedTags,
 		RECENT_TOOL_SKELETON_WINDOW,
 	);
@@ -4284,8 +4117,7 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 	const deferredMaterialize = canConsumeDeferredLate && deferredMaterializationWasPending;
 	const deferredHistoryRefresh = canConsumeDeferredLate && deferredHistoryRefreshWasPending;
 	const shouldApplyPendingOps =
-		(baseShouldApplyPendingOps || deferredMaterialize) &&
-		(!historianRunning || bypassHistorianGate);
+		(baseShouldApplyPendingOps || deferredMaterialize) && (!historianRunning || bypassHistorianGate);
 	if (shouldApplyPendingOps) {
 		const applyReason = hasPendingMaterializeSignal
 			? "explicit_flush"
@@ -4335,10 +4167,7 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 			// run in a separate try below, so we defer this consume to after that
 			// block, gated on heuristics success (or heuristics being disabled).
 		} catch (err) {
-			sessionLog(
-				args.sessionId,
-				`pending operations failed: ${err instanceof Error ? err.message : String(err)}`,
-			);
+			sessionLog(args.sessionId, `pending operations failed: ${err instanceof Error ? err.message : String(err)}`);
 			throw err;
 		}
 	} else {
@@ -4369,12 +4198,7 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 		`targets=${targetTagNumbers.length} fetched=${flushedSliceTags.length}`,
 	);
 	const tFlushed = performance.now();
-	didMutateFromFlushedStatuses = applyFlushedStatuses(
-		args.sessionId,
-		args.db,
-		targets,
-		flushedSliceTags,
-	);
+	didMutateFromFlushedStatuses = applyFlushedStatuses(args.sessionId, args.db, targets, flushedSliceTags);
 	logTransformTiming(args.sessionId, "applyFlushedStatuses", tFlushed);
 	logTransformTiming(args.sessionId, "batchFinalize:flushed", tFlushed);
 
@@ -4406,10 +4230,7 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 				piMessageStableId: stableIdResolver,
 			});
 			if (clearedReplay > 0 || inlineReplay > 0) {
-				sessionLog(
-					args.sessionId,
-					`reasoning replay: cleared=${clearedReplay} inline=${inlineReplay}`,
-				);
+				sessionLog(args.sessionId, `reasoning replay: cleared=${clearedReplay} inline=${inlineReplay}`);
 			}
 			logTransformTiming(args.sessionId, "replayReasoningClearing", tReplayReasoning);
 			logTransformTiming(
@@ -4482,12 +4303,7 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 	// Pending ops have already materialized above; reread active tags so the
 	// emergency-drop floor excludes tags reclaimed earlier in this same pass.
 	const activeTags = getActiveTagsBySession(args.db, args.sessionId);
-	logTransformTiming(
-		args.sessionId,
-		"getActiveTagsBySession",
-		tActiveTags,
-		`count=${activeTags.length}`,
-	);
+	logTransformTiming(args.sessionId, "getActiveTagsBySession", tActiveTags, `count=${activeTags.length}`);
 	if (shouldRunHeuristics) {
 		const reason = args.forceMaterialization
 			? "force_materialization"
@@ -4635,11 +4451,7 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 				heuristicOrReasoningDidMutate = true;
 				droppedCount += clearOutcome.cleared + stripOutcome.stripped;
 			}
-			if (
-				combinedWatermark > prevWatermark ||
-				clearOutcome.cleared > 0 ||
-				stripOutcome.stripped > 0
-			) {
+			if (combinedWatermark > prevWatermark || clearOutcome.cleared > 0 || stripOutcome.stripped > 0) {
 				executedWorkThisPass = true;
 			}
 		} catch (err) {
@@ -4657,8 +4469,7 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 	const toolReclaimExecutePass = args.schedulerDecision === "execute";
 	const alreadyMutatingThisPass = pendingOpsDidMutate || heuristicOrReasoningDidMutate;
 	const emergencyDropEligible =
-		args.forceMaterialization === true ||
-		args.contextUsage.percentage >= forceMaterializationPercentage;
+		args.forceMaterialization === true || args.contextUsage.percentage >= forceMaterializationPercentage;
 	let autoReclaimTargetCount = 0;
 	let autoReclaimDidMutate = false;
 	if (toolReclaimExecutePass && alreadyMutatingThisPass && !emergencyDropEligible) {
@@ -4677,7 +4488,7 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 		// can qualify under more than one rule).
 		const editMarkerTagIds = new Set<number>();
 		if (args.smartDrops) {
-			const selectedIds = new Set(syntheticPendingOps.map((op) => op.tagId));
+			const selectedIds = new Set(syntheticPendingOps.map(op => op.tagId));
 			const supersessionOps = buildSupersessionReclaimOps({
 				db: args.db,
 				sessionId: args.sessionId,
@@ -4959,10 +4770,7 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 					pending,
 				);
 				if (outcome.kind === "retryable-failure") {
-					sessionLog(
-						args.sessionId,
-						`Pi compaction-marker drain retryable failure: ${outcome.error.message}`,
-					);
+					sessionLog(args.sessionId, `Pi compaction-marker drain retryable failure: ${outcome.error.message}`);
 				} else if (clearPendingPiCompactionMarkerStateIf(args.db, args.sessionId, pending)) {
 					consumeDeferredHistoryRefresh(args.sessionId);
 				} else {
@@ -5012,7 +4820,7 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 		}
 		const counts = tokenizePiMessages(outputMessages as unknown[], {
 			cache: tokenCache,
-			stableId: (message) => postCommitEntryIdByRef.get(message),
+			stableId: message => postCommitEntryIdByRef.get(message),
 			onTiming: hasPiTransformTimingObserver()
 				? (phase, elapsedMs) => {
 						recordPiTransformTiming({
@@ -5135,21 +4943,11 @@ function applyNoteNudges(args: {
 
 	const tStickyReplay = performance.now();
 	for (const anchor of getNoteNudgeAnchors(db, sessionId)) {
-		appendReminderToUserMessageByIdPi(
-			messages,
-			replayMessageIdByIndex,
-			anchor.messageId,
-			anchor.text,
-		);
+		appendReminderToUserMessageByIdPi(messages, replayMessageIdByIndex, anchor.messageId, anchor.text);
 	}
 	for (const decision of getAutoSearchHintDecisions(db, sessionId)) {
 		if (decision.decision === "hint") {
-			appendReminderToUserMessageByIdPi(
-				messages,
-				replayMessageIdByIndex,
-				decision.messageId,
-				decision.text,
-			);
+			appendReminderToUserMessageByIdPi(messages, replayMessageIdByIndex, decision.messageId, decision.text);
 		}
 	}
 	logTransformTiming(sessionId, "stickyReplayDecisions", tStickyReplay);
@@ -5167,19 +4965,10 @@ function applyNoteNudges(args: {
 	const latestUser = findLatestUserMessageIdPi(messages, messageIdByIndex);
 	const latestUserId = latestUser?.messageId ?? null;
 	const noteReadStillVisible = hasVisibleNoteReadCallPi(messages);
-	const deferredNoteText = peekNoteNudgeText(
-		db,
-		sessionId,
-		latestUserId,
-		projectIdentity,
-		noteReadStillVisible,
-	);
+	const deferredNoteText = peekNoteNudgeText(db, sessionId, latestUserId, projectIdentity, noteReadStillVisible);
 	if (deferredNoteText) {
 		if (entryIds === null) {
-			sessionLog(
-				sessionId,
-				"Pi note-nudge: strict resolution failed; deferring delivery to next pass",
-			);
+			sessionLog(sessionId, "Pi note-nudge: strict resolution failed; deferring delivery to next pass");
 			return messages;
 		}
 		const noteInstruction = `\n\n<instruction name="deferred_notes">${deferredNoteText}</instruction>`;
@@ -5234,12 +5023,7 @@ function hasMeaningfulUserTextPi(message: PiAgentMessage): boolean {
 	if (typeof content === "string") return content.trim().length > 0;
 	if (!Array.isArray(content)) return false;
 	for (const part of content as Array<{ type?: unknown; text?: unknown }>) {
-		if (
-			part &&
-			part.type === "text" &&
-			typeof part.text === "string" &&
-			part.text.trim().length > 0
-		) {
+		if (part && part.type === "text" && typeof part.text === "string" && part.text.trim().length > 0) {
 			return true;
 		}
 	}

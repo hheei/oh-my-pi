@@ -1,7 +1,7 @@
 /**
  * Pi-side tool registration.
  *
- * Registers `ctx_search`, `ctx_memory`, `ctx_note`, `ctx_expand`, and
+ * Registers Window tools (`ctx_search`, `ctx_note`, `ctx_expand`, and
  * `ctx_reduce` against the live Pi extension API. The shared guidance block
  * in `system-prompt.ts` advertises these to the LLM only when each is
  * available, so a registration gap surfaces as "tool not found" errors when
@@ -16,10 +16,12 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { getToolTui, registerToolTuiTrace, type ToolTui } from "#host/pi-ext-shim";
 import type { ContextDatabase } from "#core/features/storage";
 import { createCtxExpandTool } from "./ctx-expand";
-import { createCtxMemoryTool } from "./ctx-memory";
 import { createCtxNoteTool } from "./ctx-note";
 import { createCtxReduceTool } from "./ctx-reduce";
 import { createCtxSearchTool } from "./ctx-search";
+import { createMemorySearchTool, type MemorySearchToolDeps } from "../agentmemory/memory-search";
+import { createMemorySaveTool } from "../agentmemory/inject-save";
+import type { AgentMemoryClientPort, RememberInput } from "../agentmemory/client";
 
 export interface RegisterToolsOptions {
 	db: ContextDatabase;
@@ -29,11 +31,6 @@ export interface RegisterToolsOptions {
 	gitCommitsEnabled?: boolean | undefined;
 	/** Resolve the current directory's project identity using the user-level home-project setting. */
 	resolveProjectIdentity?: ((ctx: { cwd: string }) => string | undefined) | undefined;
-	/** When true, ctx_memory exposes dreamer-only actions (update, merge, archive).
-	 *  Set by the subagent extension entry when the parent passes
-	 *  `--magic-context-dreamer-actions`. The main extension entry
-	 *  (./index.ts) leaves this false for the primary-agent surface. */
-	allowDreamerActions?: boolean | undefined;
 	/** Number of recent tags that ctx_reduce should treat as protected
 	 *  (deferred drops instead of immediate). Should match `magic_context.protected_tags`. */
 	protectedTags?: number | undefined;
@@ -45,9 +42,18 @@ export interface RegisterToolsOptions {
 	dreamerEnabled?: boolean | undefined;
 	/** Resolve smart-note enablement from the current cwd at tool-call time. */
 	resolveDreamerEnabled?: ((ctx: { cwd: string }) => boolean | undefined) | undefined;
-	/** When false, omit ctx_memory from the registered surface. Sidekick only
-	 *  needs read-only ctx_search; dreamer and the main agent keep ctx_memory. */
-	memoryToolEnabled?: boolean | undefined;
+	/** Unified current-Window plus agentmemory search, owned by the mctx bridge. */
+	memorySearchTool?: MemorySearchToolDeps | undefined;
+	/** Explicit durable save surface owned by the mctx agentmemory bridge. */
+	memorySaveTool?:
+		| {
+				client: AgentMemoryClientPort;
+				project: string | ((ctx: { cwd?: string }) => string);
+				agentId?: string | ((ctx: { cwd?: string }) => string | undefined);
+				queue?: (input: RememberInput) => Promise<{ candidateHash: string } | void>;
+				drain?: (candidateHash?: string) => Promise<"saved" | "queued">;
+		  }
+		| undefined;
 	/** When false, omit ctx_search from the registered agent surface. */
 	searchToolEnabled?: boolean | undefined;
 	/** When false, omit ctx_note; callers must also disable note-nudge injection. */
@@ -116,27 +122,18 @@ export function registerMagicContextTools(pi: ExtensionAPI, opts: RegisterToolsO
 		);
 	}
 
-	if (opts.memoryToolEnabled !== false) {
-		pi.registerTool(
-			frameTool(
-				tui,
-				createCtxMemoryTool({
-					db: opts.db,
-					ensureProjectRegistered: opts.ensureProjectRegistered,
-					memoryEnabled: opts.memoryEnabled,
-					embeddingEnabled: opts.embeddingEnabled,
-					allowDreamerActions: opts.allowDreamerActions ?? false,
-					resolveProjectIdentity,
-				}),
-			),
-		);
+	if (opts.memorySearchTool) {
+		pi.registerTool(frameTool(tui, createMemorySearchTool(opts.memorySearchTool)));
+	}
+	if (opts.memorySaveTool) {
+		pi.registerTool(frameTool(tui, createMemorySaveTool(opts.memorySaveTool)));
 	}
 
 	// ctx_note and ctx_expand are session-scoped: they resolve the CURRENT
 	// session id at call time. For `--no-session` children that id is the hidden
 	// ephemeral child session, so a note would be orphaned and an expand would
 	// target the child's empty transcript. Omit them for those children; ctx_search
-	// stays available and ctx_memory is controlled above.
+	// stays available independently of durable-memory retirement.
 	if (!opts.sessionScopedToolsDisabled && opts.noteToolEnabled !== false) {
 		pi.registerTool(
 			frameTool(

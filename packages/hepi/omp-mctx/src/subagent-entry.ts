@@ -24,7 +24,7 @@
  *
  * What this entry registers for `--no-session` children:
  *   - `ctx_search` — read-only search over shared memories/messages/git
- *   - `ctx_memory` — dreamer only; sidekick is retrieval-only and uses ctx_search
+ *   - durable memory tools are owned by the mctx agentmemory bridge
  *
  * Session-scoped `ctx_note`/`ctx_expand` stay omitted because hidden child
  * sessions have no useful transcript or parent note id to target.
@@ -46,7 +46,6 @@
  * named for that child agent.
  *
  * Tool/action allowlists via Pi flags:
- *   --magic-context-dreamer-actions  Register ctx_memory with the dreamer
  *                                     action surface. Off by default; sidekick
  *                                     receives ctx_search only.
  */
@@ -62,7 +61,6 @@ import { loadPiConfig, resetPiMctxConfigForReload } from "./config";
 import { ensureProjectRegisteredFromPiDirectory } from "./embedding-bootstrap";
 import { registerMagicContextTools } from "./tools";
 
-const SUBAGENT_DREAMER_ACTIONS_FLAG = "magic-context-dreamer-actions";
 
 let openedDb: ContextDatabase | undefined;
 
@@ -74,11 +72,6 @@ export default function magicContextSubagentExtension(pi: ExtensionAPI): void {
 	// be writing session-scoped state at all.
 	setHarness("pi");
 
-	pi.registerFlag(SUBAGENT_DREAMER_ACTIONS_FLAG, {
-		description: "Register ctx_memory with dreamer actions for Magic Context subagents.",
-		type: "boolean",
-		default: false,
-	});
 
 	pi.on("session_start", async () => {
 		try {
@@ -91,17 +84,11 @@ export default function magicContextSubagentExtension(pi: ExtensionAPI): void {
 			const db = openDatabase();
 			openedDb = db;
 			await ensureProjectRegisteredFromPiDirectory(directory, db);
-			const dreamerActionsEnabled = pi.getFlag(SUBAGENT_DREAMER_ACTIONS_FLAG) === true;
-
 			registerMagicContextTools(pi, {
 				db,
 				ensureProjectRegistered: ensureProjectRegisteredFromPiDirectory,
 				resolveProjectIdentity: (ctx) =>
 					resolveProjectIdentityForSession(ctx.cwd, cfg.allow_home_project),
-				// Sidekick is retrieval-only and consumes untrusted /ctx-aug prompt text,
-				// so only dreamer subagents register ctx_memory in child processes.
-				memoryToolEnabled: dreamerActionsEnabled,
-				allowDreamerActions: dreamerActionsEnabled,
 				// `--no-session` children resolve getSessionId() to the ephemeral
 				// child session, so session-scoped ctx_note/ctx_expand would write
 				// orphaned notes / expand an empty transcript. Drop them; keep ctx_search.
@@ -109,10 +96,10 @@ export default function magicContextSubagentExtension(pi: ExtensionAPI): void {
 			});
 
 			log(
-				`[pi-subagent] registered tools: ctx_search${dreamerActionsEnabled ? ", ctx_memory" : ""}` +
+				`[pi-subagent] registered tools: ctx_search` +
 					` (ctx_note/ctx_expand omitted: --no-session child;` +
 					` memory=${cfg.memory.enabled}, embedding=${cfg.embedding.provider !== "off"},` +
-					` git_commits=${cfg.memory.git_commit_indexing.enabled}, dreamer_actions=${dreamerActionsEnabled})`,
+					` git_commits=${cfg.memory.git_commit_indexing.enabled})`,
 			);
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);

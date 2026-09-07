@@ -1,17 +1,12 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import {
 	createJsonFlatSectionSettingsStorage,
-	getRuntimeSettingsRegistry,
 	type SettingField,
 	type SettingsProvider,
 	type SettingsState,
 	type SettingValue,
 } from "#host/pi-ext-shim";
-import {
-	DEFAULT_LOCAL_EMBEDDING_MODEL,
-	type MagicContextConfig,
-	MagicContextConfigSchema,
-} from "#core/config/schema/magic-context";
+import { type MagicContextConfig, MagicContextConfigSchema } from "#core/config/schema/magic-context";
 import { setOutputReserveConfig } from "#core/shared/models-dev-cache";
 
 export const PI_MCTX_SETTINGS_SECTION = "pi-mctx";
@@ -21,18 +16,8 @@ const ENABLED_FIELD = "enabled";
 const COMPACTION_ENABLED_FIELD = "compactionEnabled";
 const SYSTEM_PROMPT_INJECTION_FIELD = "systemPromptInjection";
 const TEMPORAL_AWARENESS_FIELD = "temporalAwareness";
-const MEMORY_ENABLED_FIELD = "memoryEnabled";
 const SEARCH_ENABLED_FIELD = "searchEnabled";
 const NOTE_ENABLED_FIELD = "noteEnabled";
-const MEMORY_INJECTION_BUDGET_FIELD = "memoryInjectionBudgetTokens";
-const MEMORY_AUTO_PROMOTE_FIELD = "memoryAutoPromote";
-const MEMORY_RETRIEVAL_PROMOTION_THRESHOLD_FIELD = "memoryRetrievalPromotionThreshold";
-const MEMORY_AUTO_SEARCH_ENABLED_FIELD = "memoryAutoSearchEnabled";
-const MEMORY_AUTO_SEARCH_SCORE_THRESHOLD_FIELD = "memoryAutoSearchScoreThreshold";
-const MEMORY_AUTO_SEARCH_MIN_PROMPT_CHARS_FIELD = "memoryAutoSearchMinPromptChars";
-const MEMORY_GIT_COMMIT_INDEXING_ENABLED_FIELD = "memoryGitCommitIndexingEnabled";
-const MEMORY_GIT_COMMIT_SINCE_DAYS_FIELD = "memoryGitCommitSinceDays";
-const MEMORY_GIT_COMMIT_MAX_COMMITS_FIELD = "memoryGitCommitMaxCommits";
 const HISTORIAN_ENABLED_FIELD = "historianEnabled";
 const HISTORIAN_MODEL_FIELD = "historianModel";
 const HISTORIAN_TWO_PASS_FIELD = "historianTwoPass";
@@ -44,10 +29,6 @@ const DREAMER_ENABLED_FIELD = "dreamerEnabled";
 const DREAMER_MODEL_FIELD = "dreamerModel";
 const DREAMER_INJECT_DOCS_FIELD = "dreamerInjectDocs";
 const SIDEKICK_MODEL_FIELD = "sidekickModel";
-const EMBEDDING_PROVIDER_FIELD = "embeddingProvider";
-const EMBEDDING_MODEL_FIELD = "embeddingModel";
-const EMBEDDING_ENDPOINT_FIELD = "embeddingEndpoint";
-const EMBEDDING_API_KEY_ENV_FIELD = "embeddingApiKeyEnv";
 
 const DEFAULT_CONFIG = MagicContextConfigSchema.parse({});
 let bootConfig: MagicContextConfig | undefined;
@@ -79,12 +60,12 @@ function numberField(args: {
 	return {
 		...args,
 		type: "number",
-		parse: (draft) => {
+		parse: draft => {
 			const value = Number(draft.trim());
 			if (!Number.isFinite(value)) throw new Error("Enter a number.");
 			return value;
 		},
-		validate: (value) => {
+		validate: value => {
 			if (value < args.minimum) return `Enter a value of at least ${args.minimum}.`;
 			if (args.maximum !== undefined && value > args.maximum)
 				return `Enter a value no greater than ${args.maximum}.`;
@@ -103,26 +84,8 @@ function textField(args: {
 		...args,
 		defaultValue: args.defaultValue ?? "",
 		type: "text",
-		parse: (draft) => draft.trim(),
+		parse: draft => draft.trim(),
 	};
-}
-
-function environmentVariableField(args: {
-	id: string;
-	label: string;
-	description: string;
-}): SettingField<string> {
-	return {
-		...textField(args),
-		validate: (value) =>
-			value === "" || /^[A-Z_][A-Z0-9_]*$/.test(value)
-				? undefined
-				: "Enter an uppercase environment variable name.",
-	};
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function isSettingValue(value: unknown): value is SettingValue {
@@ -131,7 +94,7 @@ function isSettingValue(value: unknown): value is SettingValue {
 		typeof value === "number" ||
 		typeof value === "string" ||
 		value === null ||
-		(Array.isArray(value) && value.every((entry) => typeof entry === "string"))
+		(Array.isArray(value) && value.every(entry => typeof entry === "string"))
 	);
 }
 
@@ -182,14 +145,10 @@ export function resolvePiMctxToolSettings(raw: Record<string, unknown>): PiMctxT
 /** Converts flat ext-core settings into the Pi MCTX runtime schema. */
 export function resolvePiMctxSettings(state: SettingsState = {}): MagicContextConfig {
 	const memory = DEFAULT_CONFIG.memory;
-	// OMP owns only the Window by default. Durable Memory is an explicit opt-in
-	// because @hheei/omp-agentmemory is the selected durable-memory owner.
-	const memoryEnabled = settingBoolean(state, MEMORY_ENABLED_FIELD, false);
-	const historianEnabled = settingBoolean(
-		state,
-		HISTORIAN_ENABLED_FIELD,
-		DEFAULT_CONFIG.historian?.disable !== true,
-	);
+	// The legacy Durable Memory setting is retired. Existing tables remain
+	// readable, but runtime configuration can no longer re-enable the surface.
+	const memoryEnabled = false;
+	const historianEnabled = settingBoolean(state, HISTORIAN_ENABLED_FIELD, DEFAULT_CONFIG.historian?.disable !== true);
 	const dreamerEnabled = settingBoolean(
 		state,
 		DREAMER_ENABLED_FIELD,
@@ -198,30 +157,7 @@ export function resolvePiMctxSettings(state: SettingsState = {}): MagicContextCo
 	const historianModel = settingText(state, HISTORIAN_MODEL_FIELD);
 	const dreamerModel = settingText(state, DREAMER_MODEL_FIELD);
 	const sidekickModel = settingText(state, SIDEKICK_MODEL_FIELD);
-	const embeddingProvider = settingText(state, EMBEDDING_PROVIDER_FIELD);
-	const embeddingModel = settingText(state, EMBEDDING_MODEL_FIELD);
-	const embeddingEndpoint = settingText(state, EMBEDDING_ENDPOINT_FIELD);
-	const embeddingApiKeyEnv = settingText(state, EMBEDDING_API_KEY_ENV_FIELD);
-	const embeddingApiKey =
-		embeddingApiKeyEnv && /^[A-Z_][A-Z0-9_]*$/.test(embeddingApiKeyEnv)
-			? process.env[embeddingApiKeyEnv]
-			: undefined;
-	const embedding =
-		embeddingProvider === "off"
-			? { provider: "off" as const }
-			: embeddingProvider === "openai-compatible" && embeddingModel && embeddingEndpoint
-				? {
-						provider: "openai-compatible" as const,
-						model: embeddingModel,
-						endpoint: embeddingEndpoint,
-						...(embeddingApiKey ? { api_key: embeddingApiKey } : {}),
-					}
-				: embeddingProvider === "local"
-					? {
-							provider: "local" as const,
-							model: embeddingModel ?? DEFAULT_LOCAL_EMBEDDING_MODEL,
-						}
-					: DEFAULT_CONFIG.embedding;
+	const embedding = { provider: "off" as const };
 
 	return MagicContextConfigSchema.parse({
 		enabled: settingBoolean(state, ENABLED_FIELD, DEFAULT_CONFIG.enabled),
@@ -231,17 +167,9 @@ export function resolvePiMctxSettings(state: SettingsState = {}): MagicContextCo
 		},
 		system_prompt_injection: {
 			...DEFAULT_CONFIG.system_prompt_injection,
-			enabled: settingBoolean(
-				state,
-				SYSTEM_PROMPT_INJECTION_FIELD,
-				DEFAULT_CONFIG.system_prompt_injection.enabled,
-			),
+			enabled: settingBoolean(state, SYSTEM_PROMPT_INJECTION_FIELD, DEFAULT_CONFIG.system_prompt_injection.enabled),
 		},
-		temporal_awareness: settingBoolean(
-			state,
-			TEMPORAL_AWARENESS_FIELD,
-			DEFAULT_CONFIG.temporal_awareness,
-		),
+		temporal_awareness: settingBoolean(state, TEMPORAL_AWARENESS_FIELD, DEFAULT_CONFIG.temporal_awareness),
 		history_budget_percentage: settingNumber(
 			state,
 			HISTORY_BUDGET_FIELD,
@@ -249,12 +177,7 @@ export function resolvePiMctxSettings(state: SettingsState = {}): MagicContextCo
 			0.05,
 			0.5,
 		),
-		historian_timeout_ms: settingNumber(
-			state,
-			HISTORIAN_TIMEOUT_FIELD,
-			DEFAULT_CONFIG.historian_timeout_ms,
-			60_000,
-		),
+		historian_timeout_ms: settingNumber(state, HISTORIAN_TIMEOUT_FIELD, DEFAULT_CONFIG.historian_timeout_ms, 60_000),
 		commit_cluster_trigger: {
 			...DEFAULT_CONFIG.commit_cluster_trigger,
 			enabled: settingBoolean(
@@ -273,73 +196,22 @@ export function resolvePiMctxSettings(state: SettingsState = {}): MagicContextCo
 			...(DEFAULT_CONFIG.historian ?? {}),
 			disable: !historianEnabled,
 			...(historianModel ? { model: historianModel } : {}),
-			two_pass: settingBoolean(
-				state,
-				HISTORIAN_TWO_PASS_FIELD,
-				DEFAULT_CONFIG.historian?.two_pass ?? false,
-			),
+			two_pass: settingBoolean(state, HISTORIAN_TWO_PASS_FIELD, DEFAULT_CONFIG.historian?.two_pass ?? false),
 		},
 		memory: {
 			...memory,
 			enabled: memoryEnabled,
-			// These long-term-memory adjuncts must never activate independently
-			// of the enclosing feature gate.
-			auto_promote: memoryEnabled
-				? settingBoolean(state, MEMORY_AUTO_PROMOTE_FIELD, memory.auto_promote)
-				: false,
-			retrieval_count_promotion_threshold: settingNumber(
-				state,
-				MEMORY_RETRIEVAL_PROMOTION_THRESHOLD_FIELD,
-				memory.retrieval_count_promotion_threshold,
-				1,
-			),
+			auto_promote: false,
+			retrieval_count_promotion_threshold: memory.retrieval_count_promotion_threshold,
 			auto_search: {
 				...memory.auto_search,
-				enabled:
-					memoryEnabled &&
-					settingBoolean(
-						state,
-						MEMORY_AUTO_SEARCH_ENABLED_FIELD,
-						memory.auto_search.enabled,
-					),
-				score_threshold: settingNumber(
-					state,
-					MEMORY_AUTO_SEARCH_SCORE_THRESHOLD_FIELD,
-					memory.auto_search.score_threshold,
-					0.3,
-					0.95,
-				),
-				min_prompt_chars: settingNumber(
-					state,
-					MEMORY_AUTO_SEARCH_MIN_PROMPT_CHARS_FIELD,
-					memory.auto_search.min_prompt_chars,
-					5,
-					500,
-				),
+				enabled: false,
 			},
 			git_commit_indexing: {
 				...memory.git_commit_indexing,
-				enabled:
-					memoryEnabled &&
-					settingBoolean(
-						state,
-						MEMORY_GIT_COMMIT_INDEXING_ENABLED_FIELD,
-						memory.git_commit_indexing.enabled,
-					),
-				since_days: settingNumber(
-					state,
-					MEMORY_GIT_COMMIT_SINCE_DAYS_FIELD,
-					memory.git_commit_indexing.since_days,
-					7,
-					3650,
-				),
-				max_commits: settingNumber(
-					state,
-					MEMORY_GIT_COMMIT_MAX_COMMITS_FIELD,
-					memory.git_commit_indexing.max_commits,
-					100,
-					20_000,
-				),
+				enabled: false,
+				since_days: memory.git_commit_indexing.since_days,
+				max_commits: memory.git_commit_indexing.max_commits,
 			},
 		},
 		embedding,
@@ -384,10 +256,8 @@ export function resetPiMctxConfigForReload(): void {
 }
 
 export function createPiMctxSettingsProvider(): SettingsProvider {
-	const memory = { ...DEFAULT_CONFIG.memory, enabled: false };
 	const historianEnabled = DEFAULT_CONFIG.historian?.disable !== true;
-	const dreamerEnabled =
-		DEFAULT_CONFIG.dreamer !== undefined && DEFAULT_CONFIG.dreamer.disable !== true;
+	const dreamerEnabled = DEFAULT_CONFIG.dreamer !== undefined && DEFAULT_CONFIG.dreamer.disable !== true;
 	return {
 		id: PI_MCTX_SETTINGS_SECTION,
 		title: "Magic Context",
@@ -403,35 +273,25 @@ export function createPiMctxSettingsProvider(): SettingsProvider {
 						id: ENABLED_FIELD,
 						label: "enabled",
 						defaultValue: DEFAULT_CONFIG.enabled,
-						description:
-							"Enable Magic Context commands, tools, widgets, and lifecycle handlers after reload.",
+						description: "Enable Magic Context commands, tools, widgets, and lifecycle handlers after reload.",
 					}),
 					booleanField({
 						id: COMPACTION_ENABLED_FIELD,
 						label: "compaction",
 						defaultValue: DEFAULT_CONFIG.compaction.enabled,
-						description:
-							"Enable Magic Context compaction instead of leaving context management to native Pi.",
+						description: "Enable Magic Context compaction instead of leaving context management to native Pi.",
 					}),
 					booleanField({
 						id: SYSTEM_PROMPT_INJECTION_FIELD,
 						label: "system prompt injection",
 						defaultValue: DEFAULT_CONFIG.system_prompt_injection.enabled,
-						description:
-							"Inject Magic Context instructions into supported agent system prompts after reload.",
+						description: "Inject Magic Context instructions into supported agent system prompts after reload.",
 					}),
 					booleanField({
 						id: TEMPORAL_AWARENESS_FIELD,
 						label: "temporal awareness",
 						defaultValue: DEFAULT_CONFIG.temporal_awareness,
 						description: "Inject elapsed-time and date markers into context after the next reload.",
-					}),
-					booleanField({
-						id: MEMORY_ENABLED_FIELD,
-						label: "memory",
-						defaultValue: memory.enabled,
-						description:
-							"Opt in to omp-mctx's legacy durable-memory store. Off keeps Window tools only and leaves durable memory to omp-agentmemory.",
 					}),
 					booleanField({
 						id: SEARCH_ENABLED_FIELD,
@@ -444,74 +304,7 @@ export function createPiMctxSettingsProvider(): SettingsProvider {
 						id: NOTE_ENABLED_FIELD,
 						label: "ctx note",
 						defaultValue: true,
-						description:
-							"Register ctx_note and session-note nudges after reload. Disable to remove both.",
-					}),
-					numberField({
-						id: MEMORY_INJECTION_BUDGET_FIELD,
-						label: "memory injection budget",
-						defaultValue: memory.injection_budget_tokens,
-						description: "Reserve tokens for memory injection after the next reload.",
-						minimum: 500,
-						maximum: 20_000,
-					}),
-					booleanField({
-						id: MEMORY_AUTO_PROMOTE_FIELD,
-						label: "memory auto promote",
-						defaultValue: memory.auto_promote,
-						description: "Promote eligible session observations into durable memory after reload.",
-					}),
-					numberField({
-						id: MEMORY_RETRIEVAL_PROMOTION_THRESHOLD_FIELD,
-						label: "memory promotion retrievals",
-						defaultValue: memory.retrieval_count_promotion_threshold,
-						description: "Require this many retrievals before memory promotion after reload.",
-						minimum: 1,
-					}),
-					booleanField({
-						id: MEMORY_AUTO_SEARCH_ENABLED_FIELD,
-						label: "memory auto search",
-						defaultValue: memory.auto_search.enabled,
-						description:
-							"Add related-memory search hints to eligible user prompts after the next reload.",
-					}),
-					numberField({
-						id: MEMORY_AUTO_SEARCH_SCORE_THRESHOLD_FIELD,
-						label: "memory search score",
-						defaultValue: memory.auto_search.score_threshold,
-						description: "Require this top search score before showing a memory hint after reload.",
-						minimum: 0.3,
-						maximum: 0.95,
-					}),
-					numberField({
-						id: MEMORY_AUTO_SEARCH_MIN_PROMPT_CHARS_FIELD,
-						label: "memory search prompt length",
-						defaultValue: memory.auto_search.min_prompt_chars,
-						description: "Skip memory search hints below this prompt length after reload.",
-						minimum: 5,
-						maximum: 500,
-					}),
-					booleanField({
-						id: MEMORY_GIT_COMMIT_INDEXING_ENABLED_FIELD,
-						label: "git commit indexing",
-						defaultValue: memory.git_commit_indexing.enabled,
-						description: "Index project Git commits as a ctx_search source after reload.",
-					}),
-					numberField({
-						id: MEMORY_GIT_COMMIT_SINCE_DAYS_FIELD,
-						label: "git history days",
-						defaultValue: memory.git_commit_indexing.since_days,
-						description: "Index this many days of Git history after the next reload.",
-						minimum: 7,
-						maximum: 3650,
-					}),
-					numberField({
-						id: MEMORY_GIT_COMMIT_MAX_COMMITS_FIELD,
-						label: "git commit limit",
-						defaultValue: memory.git_commit_indexing.max_commits,
-						description: "Keep at most this many indexed Git commits per project after reload.",
-						minimum: 100,
-						maximum: 20_000,
+						description: "Register ctx_note and session-note nudges after reload. Disable to remove both.",
 					}),
 					booleanField({
 						id: HISTORIAN_ENABLED_FIELD,
@@ -582,31 +375,6 @@ export function createPiMctxSettingsProvider(): SettingsProvider {
 						label: "sidekick model",
 						description:
 							"Pi provider/model ID for sidekick retrieval runs. Leave empty to disable sidekick calls.",
-					}),
-					textField({
-						id: EMBEDDING_PROVIDER_FIELD,
-						label: "embedding provider",
-						defaultValue: DEFAULT_CONFIG.embedding.provider,
-						description: "Embedding backend: local, openai-compatible, or off.",
-					}),
-					textField({
-						id: EMBEDDING_MODEL_FIELD,
-						label: "embedding model",
-						defaultValue:
-							DEFAULT_CONFIG.embedding.provider === "local" ? DEFAULT_CONFIG.embedding.model : "",
-						description:
-							"Local or remote embedding model ID. Remote mode requires this value and an endpoint.",
-					}),
-					textField({
-						id: EMBEDDING_ENDPOINT_FIELD,
-						label: "embedding endpoint",
-						description: "OpenAI-compatible embedding API endpoint. Applies only in remote mode.",
-					}),
-					environmentVariableField({
-						id: EMBEDDING_API_KEY_ENV_FIELD,
-						label: "embedding API key env",
-						description:
-							"Environment variable containing the remote embedding API key. The key itself is never saved in Pi settings.",
 					}),
 				],
 			},

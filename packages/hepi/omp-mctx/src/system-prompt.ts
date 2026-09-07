@@ -10,11 +10,7 @@
 
 import { createHash } from "node:crypto";
 import { buildMagicContextSection } from "#core/agents/magic-context-prompt";
-import {
-	type ContextDatabase,
-	getOrCreateSessionMeta,
-	updateSessionMeta,
-} from "#core/features/storage";
+import { type ContextDatabase, getOrCreateSessionMeta, updateSessionMeta } from "#core/features/storage";
 import { estimateTokens } from "#core/hooks/read-session-formatting";
 import { sessionLog } from "#core/shared/logger";
 
@@ -48,6 +44,7 @@ export interface BuildMagicContextBlockOptions {
 	searchEnabled?: boolean | undefined;
 	/** Whether the session-local ctx_note tool is registered. */
 	noteEnabled?: boolean | undefined;
+	agentMemoryToolsEnabled?: boolean | undefined;
 	/** Reserved for compatibility; user profile now lives in m[0]. */
 	userMemoriesEnabled?: boolean | undefined;
 	existingSystemPrompt?: string | undefined;
@@ -62,8 +59,7 @@ export interface BuildMagicContextBlockOptions {
  */
 export function buildMagicContextBlock(opts: BuildMagicContextBlockOptions): string | null {
 	const existing = opts.existingSystemPrompt ?? "";
-	const includeGuidance =
-		(opts.includeGuidance ?? true) && !existing.includes(MAGIC_CONTEXT_MARKER);
+	const includeGuidance = (opts.includeGuidance ?? true) && !existing.includes(MAGIC_CONTEXT_MARKER);
 	if (!includeGuidance) return null;
 
 	return buildMagicContextSection(
@@ -79,6 +75,7 @@ export function buildMagicContextBlock(opts: BuildMagicContextBlockOptions): str
 		opts.memoryEnabled !== false,
 		opts.searchEnabled !== false,
 		opts.noteEnabled !== false,
+		opts.agentMemoryToolsEnabled === true,
 	);
 }
 
@@ -146,18 +143,12 @@ export function processSystemPromptForCache(args: {
 			// Already busting cache — adopt the live date so future
 			// stable turns freeze on it.
 			stickyDateBySession.set(sessionId, liveDate);
-			sessionLog(
-				sessionId,
-				`system prompt date updated: ${stickyDate} → ${liveDate} (cache-busting pass)`,
-			);
+			sessionLog(sessionId, `system prompt date updated: ${stickyDate} → ${liveDate} (cache-busting pass)`);
 		} else {
 			// Defer-equivalent turn — replace the live date with the
 			// frozen one so the prefix cache survives.
 			frozenPrompt = systemPrompt.replace(DATE_PATTERN, stickyDate);
-			sessionLog(
-				sessionId,
-				`system prompt date frozen: real=${liveDate}, using=${stickyDate} (cache-stable pass)`,
-			);
+			sessionLog(sessionId, `system prompt date frozen: real=${liveDate}, using=${stickyDate} (cache-stable pass)`);
 		}
 	}
 
@@ -172,10 +163,7 @@ export function processSystemPromptForCache(args: {
 			`system prompt hash changed: ${previousHash} → ${currentHash} (len=${frozenPrompt.length})`,
 		);
 	} else if (isFirstHash) {
-		sessionLog(
-			sessionId,
-			`system prompt hash initialized: ${currentHash} (len=${frozenPrompt.length})`,
-		);
+		sessionLog(sessionId, `system prompt hash initialized: ${currentHash} (len=${frozenPrompt.length})`);
 	}
 
 	// Persist hash + token estimate so dashboard / status surfaces are

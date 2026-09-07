@@ -17,7 +17,7 @@ describe("loadPiConfig", () => {
 		expect(config.memory.git_commit_indexing.enabled).toBe(false);
 	});
 
-	test("enables all configured memory adjuncts only on explicit opt-in", () => {
+	test("ignores the retired legacy memory setting", () => {
 		resetPiMctxConfigForReload();
 		primePiMctxConfigFromPluginSettings({
 			enabled: true,
@@ -28,10 +28,10 @@ describe("loadPiConfig", () => {
 		});
 		const config = loadPiConfig();
 		expect(config.enabled).toBe(true);
-		expect(config.memory.enabled).toBe(true);
-		expect(config.memory.auto_promote).toBe(true);
-		expect(config.memory.auto_search.enabled).toBe(true);
-		expect(config.memory.git_commit_indexing.enabled).toBe(true);
+		expect(config.memory.enabled).toBe(false);
+		expect(config.memory.auto_promote).toBe(false);
+		expect(config.memory.auto_search.enabled).toBe(false);
+		expect(config.memory.git_commit_indexing.enabled).toBe(false);
 	});
 
 	test("keeps Window search and note tools independently configurable", () => {

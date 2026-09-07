@@ -1,10 +1,11 @@
 # @hheei/omp-mctx
 
-OMP Window owner: historian compaction, compartments, `ctx_reduce` / `ctx_expand` / `ctx_note`. Durable Memory is a separate, explicit opt-in.
+OMP Window and agentmemory bridge owner: historian compaction, compartments,
+`ctx_reduce` / `ctx_expand` / `ctx_note`, and the optional agentmemory REST
+integration. The unmodified agentmemory Docker service remains the canonical
+Durable Memory backend.
 
-This package **is** an OMP extension. `package.json` registers `omp.extensions: ["./src/index.ts"]`. `enabled` defaults to **false**. Once enabled, `memoryEnabled` also defaults to **false**: the Window runtime registers no `ctx_memory` or `/ctx-embed`, injects no `<project-memory>` / user profile, and fresh `context.db` files contain no legacy memory, embedding, authority, or mirror tables. `ctx_search` and `ctx_note` default on but have independent `searchEnabled` / `noteEnabled` settings; turning either off removes its agent tool after reload. `noteEnabled: false` also suppresses session-note nudges. `ctx_expand` and `ctx_reduce` remain Window controls.
-
-`memoryEnabled: true` is the sole opt-in for the legacy mctx Durable Memory surface. It restores `ctx_memory`, `/ctx-embed`, memory injection/promotion/search, and the legacy schema. Turning it back off is non-destructive: runtime use stops, but existing legacy tables/data are retained. Keep it false while `@hheei/omp-agentmemory` owns Durable Memory (ADR-0001).
+This package **is** an OMP extension. `package.json` registers `omp.extensions: ["./src/index.ts"]`. `enabled` defaults to **false**. The legacy mctx Durable Memory surface is retired: the Window runtime does not register `ctx_memory` or `/ctx-embed`, and fresh `context.db` files contain no legacy memory, embedding, authority, or mirror tables. Existing legacy tables and rows are retained without migration or deletion. `ctx_search` and `ctx_note` default on but have independent `searchEnabled` / `noteEnabled` settings; turning either off removes its agent tool after reload. `noteEnabled: false` also suppresses session-note nudges. `ctx_expand` and `ctx_reduce` remain Window controls.
 
 The previous README text (“no `pi.extensions`, unloadable until the first HEPI slice”) described the frozen copy of `@hheei/pi-mctx` and is **stale**.
 
@@ -18,7 +19,7 @@ The previous README text (“no `pi.extensions`, unloadable until the first HEPI
 ### Memory schema modes
 
 - **Window-only (default):** fresh `context.db` has Window/session tables, `message_history_fts`, and `lkg_slots`; it has no legacy memory/primer/git-commit FTS, embedding vectors, authority, or mirror tables.
-- **Legacy Memory opt-in:** `memoryEnabled: true` creates the full legacy schema at boot. Switch the setting only on reload/restart; disabling it later changes runtime behavior without destructively deleting prior data.
+- **Legacy Memory data:** old tables and rows remain untouched for inspection or later migration. New databases do not create the legacy schema.
 - Both modes use only `${OMP_CODING_AGENT_DIR:-~/.omp/agent}/extensions/omp-mctx/context.db`; they never open CortexKit or frozen HEPI storage.
 
 ### Tool switches
@@ -29,7 +30,16 @@ All switches apply at reload/restart because Pi registers tools once per process
 | --- | --- | --- |
 | `searchEnabled` | `true` | Removes `ctx_search` and its system-prompt guidance; historian/compaction remains active. |
 | `noteEnabled` | `true` | Removes `ctx_note`, its system-prompt guidance, and transform-time note nudges; existing note rows are retained. |
-| `memoryEnabled` | `false` | Removes `ctx_memory` and `/ctx-embed`, disables Memory injection/embedding, and uses the Window-only fresh schema. |
+
+### Agentmemory bridge
+
+The bridge is disabled by default. Enable `agentmemory.enabled` to connect to
+an ordinary agentmemory Docker service over its public REST API. Capture,
+prompt-specific Inject, historian retrieval, and the native `memory_search` /
+`memory_save` Tool Surface each have independent kill switches and default to
+on once the top-level bridge is enabled. When disabled, mctx performs no
+agentmemory network work. No separate `omp-agentmemory` extension should be
+installed or enabled.
 
 ## Lineage
 

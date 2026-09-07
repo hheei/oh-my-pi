@@ -7,14 +7,11 @@ import { log } from "../shared/logger";
 import { Database } from "../shared/sqlite";
 import { closeQuietly, invalidateSqliteTableCache } from "../shared/sqlite-helpers";
 import { shouldEnforcePrivateStoragePermissions } from "../shared/storage-permissions";
-import { ensureContextStoreUuid } from "./context-authority";
-import { LATEST_SCHEMA_SQL, WINDOW_SCHEMA_SQL } from "./fresh-schema";
-import {
-	loadToolDefinitionMeasurements,
-	setDatabase as setToolDefinitionDatabase,
-} from "./tool-definition-tokens";
+import { WINDOW_SCHEMA_SQL } from "./fresh-schema";
+import { loadToolDefinitionMeasurements, setDatabase as setToolDefinitionDatabase } from "./tool-definition-tokens";
 import { createDbLkgPersistence, LKG_SLOTS_DDL } from "../hooks/lkg-persist";
 import { registerLkgPersistence } from "../hooks/lkg-slot";
+import { ensureAgentMemoryOutboxSchema } from "../../agentmemory/outbox";
 
 const databases = new Map<string, Database>();
 const pendingAsyncOpens = new Map<string, Promise<Database>>();
@@ -29,9 +26,7 @@ const defaultStoragePermissionFs = { chmodSync, mkdirSync };
 let storagePermissionFs = defaultStoragePermissionFs;
 
 /** Test seam: captures permission-changing calls without changing real fixture modes. */
-export function __setStoragePermissionFsForTests(
-	overrides: Partial<typeof defaultStoragePermissionFs>,
-): void {
+export function __setStoragePermissionFsForTests(overrides: Partial<typeof defaultStoragePermissionFs>): void {
 	storagePermissionFs = { ...defaultStoragePermissionFs, ...overrides };
 }
 
@@ -55,9 +50,7 @@ function ensureSecureStorageDir(dir: string): void {
 	try {
 		storagePermissionFs.chmodSync(dir, 0o700);
 	} catch (error) {
-		log(
-			`[magic-context] could not restrict storage dir permissions on ${dir}: ${getErrorMessage(error)}`,
-		);
+		log(`[magic-context] could not restrict storage dir permissions on ${dir}: ${getErrorMessage(error)}`);
 	}
 }
 
@@ -74,16 +67,14 @@ function restrictDatabaseFilePermissions(dbPath: string): void {
 		try {
 			storagePermissionFs.chmodSync(file, 0o600);
 		} catch (error) {
-			log(
-				`[magic-context] could not restrict DB file permissions on ${file}: ${getErrorMessage(error)}`,
-			);
+			log(`[magic-context] could not restrict DB file permissions on ${file}: ${getErrorMessage(error)}`);
 		}
 	}
 }
 
 export interface OpenDatabaseOptions {
 	dbPath?: string | undefined;
-	/** Defaults false: legacy Durable Memory is explicitly opted in by the runtime. */
+	/** @deprecated Accepted for source compatibility; legacy schema creation is retired. */
 	memoryEnabled?: boolean | undefined;
 }
 
@@ -127,11 +118,7 @@ let testBackstopDbDir: string | null = null;
 let testBackstopWarned = false;
 function getTestBackstopDbDir(): string {
 	if (!testBackstopDbDir) {
-		testBackstopDbDir = join(
-			mkdtempSync(join(tmpdir(), "mc-test-db-backstop-")),
-			"extensions",
-			"omp-mctx",
-		);
+		testBackstopDbDir = join(mkdtempSync(join(tmpdir(), "mc-test-db-backstop-")), "extensions", "omp-mctx");
 	}
 	return testBackstopDbDir;
 }
@@ -193,7 +180,6 @@ function healWedgedChannel2Claims(db: Database): void {
 	).run(staleBefore);
 }
 
-
 function finishDatabaseOpen(db: Database, dbPath: string): Database {
 	// Recover any Channel-2 ceiling-nudge lease left at `claimed` by a crash
 	// mid-delivery (see healWedgedChannel2Claims). Fresh opens and later
@@ -218,36 +204,20 @@ function finishDatabaseOpen(db: Database, dbPath: string): Database {
 }
 
 export function initializeDatabase(db: Database, options: { memoryEnabled?: boolean } = {}): void {
-	const memoryEnabled = options.memoryEnabled ?? false;
-	const legacySchema = db
-		.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'")
-		.get();
-	if (legacySchema) {
-		throw new Error(
-			"legacy Magic Context database detected; remove context.db before starting Pi MCTX",
-		);
-	}
+	void options;
+	// Legacy databases are opened in place. The retired durable-memory tables
+	// are intentionally left untouched; Window migrations use IF NOT EXISTS and
+	// never read or rewrite those rows.
 	db.exec("PRAGMA busy_timeout=5000");
 	db.exec("PRAGMA foreign_keys=ON");
 	db.exec("PRAGMA journal_mode=WAL");
 	applySqliteTuningPragmas(db);
-	const initialized = db
-		.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_meta'")
-		.get();
+	const initialized = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_meta'").get();
 	if (!initialized) {
-		db.exec(memoryEnabled ? LATEST_SCHEMA_SQL : WINDOW_SCHEMA_SQL);
-	} else if (memoryEnabled) {
-		// A prior Window-only boot intentionally created no legacy Memory
-		// tables. An explicit Memory-on boot upgrades that existing store here;
-		// this is idempotent and only runs during database initialization.
-		db.exec(LATEST_SCHEMA_SQL);
-	}
-	if (memoryEnabled) {
-		db.prepare(
-			"INSERT OR IGNORE INTO mirror_resnapshot_state(domain, status, updated_at, generation) VALUES ('memories', 'pending_check', 0, NULL)",
-		).run();
+		db.exec(WINDOW_SCHEMA_SQL);
 	}
 	db.exec(LKG_SLOTS_DDL);
+	ensureAgentMemoryOutboxSchema(db);
 	invalidateSqliteTableCache(db);
 }
 
@@ -272,8 +242,7 @@ export function openDatabase(): Database;
 export function openDatabase(dbPath: string): Database;
 export function openDatabase(options: OpenDatabaseOptions): Database;
 export function openDatabase(dbPathOrOptions?: string | OpenDatabaseOptions): Database {
-	const options =
-		typeof dbPathOrOptions === "string" ? { dbPath: dbPathOrOptions } : dbPathOrOptions;
+	const options = typeof dbPathOrOptions === "string" ? { dbPath: dbPathOrOptions } : dbPathOrOptions;
 	const { dbDir, dbPath } = resolveDatabasePath(options?.dbPath);
 	const existing = databases.get(dbPath);
 	if (existing) {
@@ -292,8 +261,7 @@ export function openDatabase(dbPathOrOptions?: string | OpenDatabaseOptions): Da
 		ensureSecureStorageDir(dbDir);
 
 		db = new Database(dbPath);
-		initializeDatabase(db, { memoryEnabled: options?.memoryEnabled });
-		if (options?.memoryEnabled === true) ensureContextStoreUuid(db);
+		initializeDatabase(db);
 		return finishDatabaseOpen(db, dbPath);
 	} catch (error) {
 		if (db) closeQuietly(db);
@@ -311,11 +279,8 @@ export function openDatabase(dbPathOrOptions?: string | OpenDatabaseOptions): Da
  * Async boot variant of openDatabase. SQLite calls remain synchronous; this
  * wrapper coalesces concurrent opens for the same database path.
  */
-export async function openDatabaseAsync(
-	dbPathOrOptions?: string | OpenDatabaseOptions,
-): Promise<Database> {
-	const options =
-		typeof dbPathOrOptions === "string" ? { dbPath: dbPathOrOptions } : dbPathOrOptions;
+export async function openDatabaseAsync(dbPathOrOptions?: string | OpenDatabaseOptions): Promise<Database> {
+	const options = typeof dbPathOrOptions === "string" ? { dbPath: dbPathOrOptions } : dbPathOrOptions;
 	const { dbDir, dbPath } = resolveDatabasePath(options?.dbPath);
 	const existing = databases.get(dbPath);
 	if (existing) {
@@ -324,7 +289,11 @@ export async function openDatabaseAsync(
 	}
 
 	const pending = pendingAsyncOpens.get(dbPath);
-	if (pending) return pending;
+	if (pending) {
+		return pending.then(db => {
+			return db;
+		});
+	}
 
 	const opening = (async (): Promise<Database> => {
 		let db: Database | undefined;
@@ -332,8 +301,7 @@ export async function openDatabaseAsync(
 			ensureSecureStorageDir(dbDir);
 
 			db = new Database(dbPath);
-			initializeDatabase(db, { memoryEnabled: options?.memoryEnabled });
-			if (options?.memoryEnabled === true) ensureContextStoreUuid(db);
+			initializeDatabase(db);
 			return finishDatabaseOpen(db, dbPath);
 		} catch (error) {
 			if (db) closeQuietly(db);

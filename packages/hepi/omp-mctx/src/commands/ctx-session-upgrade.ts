@@ -28,7 +28,6 @@ import { createPiHistorianClient } from "../pi-recomp-client-shared";
 import { stagePiRecompMarker } from "../pi-recomp-marker";
 import { isPiRecompInFlight, spawnPiRecompRun } from "../pi-recomp-runner";
 import { readPiSessionMessages } from "../read-session-pi";
-import { updateStatusLine } from "../status-line";
 import { resolveSessionId, sendCtxStatusMessage } from "./pi-command-utils";
 
 export interface CtxSessionUpgradeRuntimeDeps {
@@ -216,11 +215,6 @@ export function registerCtxSessionUpgradeCommand(
 					provider: {
 						readMessages: () => readPiSessionMessages(ctx),
 					} satisfies RawMessageProvider,
-					onStatusChange: () =>
-						updateStatusLine(ctx, {
-							db: currentDeps.db,
-							projectIdentity: ctx.cwd,
-						}),
 					work: async () => {
 						const summary = await runMigration();
 						sendCtxStatusMessage(pi, {
@@ -246,17 +240,11 @@ export function registerCtxSessionUpgradeCommand(
 			// Detached: the upgrade (multi-pass recomp + memory migration) runs in
 			// the background so the Pi REPL stays responsive (parity with legacy host's
 			// `void runManagedUpgrade`). The command handler returns right after the
-			// "Rebuilding…" ack above. Provider registration, the `recomp`
-			// status-line flag, shutdown-drain tracking, and cleanup are owned by
-			// spawnPiRecompRun.
+			// "Rebuilding…" ack above. Provider registration, shutdown-drain tracking,
+			// and cleanup are owned by spawnPiRecompRun.
 			spawnPiRecompRun({
 				sessionId,
 				provider,
-				onStatusChange: () =>
-					updateStatusLine(ctx, {
-						db: currentDeps.db,
-						projectIdentity: ctx.cwd,
-					}),
 				work: async () => {
 					// Step 1 — compartment upgrade via full recomp.
 					const recompResult = await executeContextRecompWithResult(

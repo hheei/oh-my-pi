@@ -2,7 +2,6 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { insertUserMemory } from "#core/features/user-memory/storage-user-memory";
 import { closeQuietly } from "#core/shared/sqlite-helpers";
 import {
 	buildMagicContextBlock,
@@ -30,7 +29,7 @@ describe("buildMagicContextBlock v2 system-prompt parity", () => {
 			expect(block).not.toBeNull();
 			expect(block).toContain(MAGIC_CONTEXT_GUIDANCE_MARKER);
 			expect(block).toContain("ctx_search");
-			expect(block).toContain("ctx_memory");
+			expect(block).not.toContain("ctx_memory");
 			expect(block).toContain("ctx_note");
 		} finally {
 			closeQuietly(db);
@@ -43,8 +42,6 @@ describe("buildMagicContextBlock v2 system-prompt parity", () => {
 		mkdirSync(cwd, { recursive: true });
 		writeFileSync(join(cwd, "ARCHITECTURE.md"), "# Architecture", "utf8");
 		try {
-			insertUserMemory(db, "Stable profile should move to m[0]", []);
-
 			const block = buildMagicContextBlock({
 				db,
 				cwd,
@@ -67,7 +64,6 @@ describe("buildMagicContextBlock v2 system-prompt parity", () => {
 		const cwd = tempDir("pi-no-guidance-");
 		writeFileSync(join(cwd, "STRUCTURE.md"), "# Structure", "utf8");
 		try {
-			insertUserMemory(db, "Profile", []);
 			const block = buildMagicContextBlock({
 				db,
 				cwd,
@@ -149,7 +145,7 @@ describe("buildMagicContextBlock v2 system-prompt parity", () => {
 			});
 
 			expect(unset).toBe(baseline);
-			expect(localized).toContain("Use Spanish (español) for your natural-language replies");
+			expect(localized).toContain("Use Spanish (Español) for your natural-language replies");
 		} finally {
 			closeQuietly(db);
 		}

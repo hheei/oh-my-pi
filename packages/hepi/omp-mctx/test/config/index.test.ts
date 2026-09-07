@@ -125,9 +125,7 @@ describe("Pi MCTX settings", () => {
 		});
 
 		expect(config.enabled).toBe(false);
-		expect(config.memory.auto_search.score_threshold).toBe(
-			defaults.memory.auto_search.score_threshold,
-		);
+		expect(config.memory.auto_search.score_threshold).toBe(defaults.memory.auto_search.score_threshold);
 		expect(config.historian_timeout_ms).toBe(defaults.historian_timeout_ms);
 		expect(config.dreamer).toBeUndefined();
 		expect(config.embedding).toEqual(defaults.embedding);
@@ -138,21 +136,13 @@ describe("Pi MCTX settings", () => {
 		const group = provider.groups[0];
 
 		expect(group?.id).toBe(PI_MCTX_SETTINGS_GROUP);
-		expect(group?.fields.map((field) => field.id)).toEqual([
+		expect(group?.fields.map(field => field.id)).toEqual([
 			"enabled",
 			"compactionEnabled",
 			"systemPromptInjection",
 			"temporalAwareness",
-			"memoryEnabled",
-			"memoryInjectionBudgetTokens",
-			"memoryAutoPromote",
-			"memoryRetrievalPromotionThreshold",
-			"memoryAutoSearchEnabled",
-			"memoryAutoSearchScoreThreshold",
-			"memoryAutoSearchMinPromptChars",
-			"memoryGitCommitIndexingEnabled",
-			"memoryGitCommitSinceDays",
-			"memoryGitCommitMaxCommits",
+			"searchEnabled",
+			"noteEnabled",
 			"historianEnabled",
 			"historianModel",
 			"historianTwoPass",
@@ -164,10 +154,6 @@ describe("Pi MCTX settings", () => {
 			"dreamerModel",
 			"dreamerInjectDocs",
 			"sidekickModel",
-			"embeddingProvider",
-			"embeddingModel",
-			"embeddingEndpoint",
-			"embeddingApiKeyEnv",
 		]);
 	});
 
@@ -175,9 +161,7 @@ describe("Pi MCTX settings", () => {
 		const pi = { events: {} } as ExtensionAPI;
 
 		registerPiMctxSettings(pi);
-		expect(getRuntimeSettingsRegistry(pi).get(PI_MCTX_SETTINGS_SECTION)?.id).toBe(
-			PI_MCTX_SETTINGS_SECTION,
-		);
+		expect(getRuntimeSettingsRegistry(pi).get(PI_MCTX_SETTINGS_SECTION)?.id).toBe(PI_MCTX_SETTINGS_SECTION);
 	});
 
 	it("reads Pi settings without consulting legacy magic-context JSONC", () => {

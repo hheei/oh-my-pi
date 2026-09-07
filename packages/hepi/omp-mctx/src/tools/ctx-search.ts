@@ -195,7 +195,7 @@ export function createCtxSearchTool(deps: CtxSearchToolDeps): ToolDefinition<typ
 	const memoryEnabled = deps.memoryEnabled === true;
 	const description = memoryEnabled
 		? CTX_SEARCH_DESCRIPTION
-		: "Search compacted session history and session-only notes. Durable Memory is disabled; use @hheei/omp-agentmemory for cross-session facts.";
+		: "Search compacted session history and session-only notes. Legacy Durable Memory is disabled; enable the mctx agentmemory bridge for cross-session facts.";
 	return {
 		name: "ctx_search",
 		label: "Magic Context: Search",

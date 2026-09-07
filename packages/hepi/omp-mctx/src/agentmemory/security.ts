@@ -1,36 +1,34 @@
-const LOOPBACK_HOSTS: Record<string, true> = {
-	localhost: true,
-	"127.0.0.1": true,
-	"::1": true,
-};
+import { log } from "#core/shared/logger";
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 export function usesPlaintextBearerAuth(baseUrl: string, secret?: string): boolean {
 	if (!secret) return false;
 	try {
 		const parsed = new URL(baseUrl);
 		const hostname = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-		return parsed.protocol === "http:" && !LOOPBACK_HOSTS[hostname];
+		return parsed.protocol === "http:" && !LOOPBACK_HOSTS.has(hostname);
 	} catch {
 		return false;
 	}
 }
 
 export function plaintextBearerAuthMessage(baseUrl: string): string {
-	return `omp-agentmemory: AGENTMEMORY_SECRET is configured for plaintext HTTP to ${baseUrl}. Use HTTPS, loopback, or an SSH tunnel.`;
+	return `omp-mctx agentmemory: bearer secret would cross plaintext HTTP to ${baseUrl}; use HTTPS, loopback, or an SSH tunnel.`;
 }
 
+/** Warn once per client/runtime and optionally fail closed for remote HTTP. */
 export function createPlaintextBearerAuthGuard(
-	warn: (message: string) => void = (message) => console.warn(message),
-	env?: { AGENTMEMORY_REQUIRE_HTTPS?: string },
+	options: { requireHttps?: boolean; warn?: (message: string) => void } = {},
 ): (baseUrl: string, secret?: string) => void {
 	let warned = false;
 	return (baseUrl, secret) => {
 		if (!usesPlaintextBearerAuth(baseUrl, secret)) return;
 		const message = plaintextBearerAuthMessage(baseUrl);
-		if ((env || process.env).AGENTMEMORY_REQUIRE_HTTPS === "1") throw new Error(message);
+		if (options.requireHttps === true) throw new Error(message);
 		if (!warned) {
 			warned = true;
-			warn(message);
+			(options.warn ?? ((value: string) => log(value)))(message);
 		}
 	};
 }

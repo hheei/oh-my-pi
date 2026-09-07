@@ -66,4 +66,24 @@ describe("Magic Context tool guidance", () => {
 		expect(prompt).not.toContain("project memories");
 		expect(prompt).not.toContain("ctx_note");
 	});
+
+	test("uses the agentmemory tools when the bridge surface is enabled", () => {
+		const prompt = buildMagicContextSection(
+			null,
+			20,
+			true,
+			false,
+			false,
+			false,
+			false,
+			undefined,
+			false,
+			false,
+			true,
+			true,
+		);
+		expect(prompt).toContain("memory_search");
+		expect(prompt).toContain("memory_save");
+		expect(prompt).not.toContain("ctx_search");
+	});
 });

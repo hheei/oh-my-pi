@@ -35,15 +35,32 @@ describe("Window-only fresh schema", () => {
 		expect(existing.some(({ name }) => name === "lkg_slots")).toBe(true);
 	});
 
-	test("keeps legacy durable-memory tables on explicit opt-in", () => {
+	test("does not recreate legacy durable-memory tables from a retired option", () => {
 		const db = new Database(join(mkdtempSync(join(tmpdir(), "omp-mctx-memory-schema-")), "context.db"));
 		databases.push(db);
 		initializeDatabase(db, { memoryEnabled: true });
 
-		const memoryTable = db
-			.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memories'")
-			.get();
-		expect(memoryTable).toBeDefined();
+		const memoryTable = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memories'").get();
+		expect(memoryTable).toBeNull();
+	});
+
+	test("opens a legacy database without rewriting retained durable-memory rows", () => {
+		const db = new Database(join(mkdtempSync(join(tmpdir(), "omp-mctx-legacy-open-")), "context.db"));
+		databases.push(db);
+		db.exec(
+			"CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY); " +
+				"CREATE TABLE memories (id INTEGER PRIMARY KEY, content TEXT NOT NULL); " +
+				"INSERT INTO memories (id, content) VALUES (7, 'retain this legacy fact')",
+		);
+
+		initializeDatabase(db);
+
+		expect(db.prepare("SELECT content FROM memories WHERE id = 7").get()).toEqual({
+			content: "retain this legacy fact",
+		});
+		expect(
+			db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_meta'").get(),
+		).toBeDefined();
 	});
 
 	test("clears Window-only sessions without legacy tables", () => {
@@ -55,9 +72,7 @@ describe("Window-only fresh schema", () => {
 			db.prepare("SELECT project_path FROM session_projects WHERE session_id = ?").get("window-session"),
 		).toEqual({ project_path: "git:/tmp/window-project" });
 		expect(
-			db
-				.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'compartment_chunk_embeddings'")
-				.get(),
+			db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'compartment_chunk_embeddings'").get(),
 		).toBeNull();
 		expect(
 			saveLkgSlotToDb(db, "window-session", {
@@ -76,7 +91,7 @@ describe("Window-only fresh schema", () => {
 		expect(loadPersistedLkgSlot(db, "window-session")).toBeUndefined();
 	});
 
-	test("upgrades an existing Window-only database on a later Memory-on boot", () => {
+	test("does not upgrade a Window-only database on a later legacy-memory boot", () => {
 		const dbPath = join(mkdtempSync(join(tmpdir(), "omp-mctx-memory-upgrade-")), "context.db");
 		const windowDb = new Database(dbPath);
 		databases.push(windowDb);
@@ -84,14 +99,15 @@ describe("Window-only fresh schema", () => {
 		expect(hasSqliteTable(windowDb, "compartment_chunk_embeddings")).toBe(false);
 
 		initializeDatabase(windowDb, { memoryEnabled: true });
-		expect(hasSqliteTable(windowDb, "compartment_chunk_embeddings")).toBe(true);
+		expect(hasSqliteTable(windowDb, "compartment_chunk_embeddings")).toBe(false);
 		closeQuietly(windowDb);
 
 		const memoryDb = new Database(dbPath);
 		databases.push(memoryDb);
 		initializeDatabase(memoryDb, { memoryEnabled: true });
-		expect(hasSqliteTable(memoryDb, "compartment_chunk_embeddings")).toBe(true);
-		expect(memoryDb.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'memories'").get()).toBeDefined();
+		expect(hasSqliteTable(memoryDb, "compartment_chunk_embeddings")).toBe(false);
+		expect(
+			memoryDb.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'memories'").get(),
+		).toBeNull();
 	});
-
 });

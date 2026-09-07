@@ -12,12 +12,16 @@ import { setHarness } from "#core/shared/harness";
 import { Database } from "#core/shared/sqlite";
 import { closeQuietly } from "#core/shared/sqlite-helpers";
 import { initializeDatabase } from "#core/features/storage-db";
+import { LATEST_SCHEMA_SQL } from "#core/features/fresh-schema";
 import { runEmbedDrain } from "./ctx-embed.ts";
 
 function createTestDb(): Database {
 	setHarness("pi");
 	const db = new Database(":memory:");
 	initializeDatabase(db, { memoryEnabled: true });
+	// This test exercises the retired embedding worker against a frozen legacy
+	// fixture. Runtime initialization must never create this schema.
+	db.exec(LATEST_SCHEMA_SQL);
 	return db;
 }
 
@@ -38,14 +42,11 @@ class MixedBatchProvider implements EmbeddingProvider {
 		_signal?: AbortSignal,
 		_purpose?: EmbeddingPurpose,
 	): Promise<(Float32Array | null)[]> {
-		const results = texts.map((text, index) =>
-			index === 0 ? new Float32Array([text.length, 1]) : null,
-		);
-		if (results.some((vector) => vector === null)) {
+		const results = texts.map((text, index) => (index === 0 ? new Float32Array([text.length, 1]) : null));
+		if (results.some(vector => vector === null)) {
 			this.lastFailure = {
 				class: "invalid_envelope",
-				reason:
-					"response had keys [data, object] but data[].embedding was absent for some inputs",
+				reason: "response had keys [data, object] but data[].embedding was absent for some inputs",
 				retryable: true,
 			};
 		} else {
@@ -77,7 +78,7 @@ class CompleteBatchProvider implements EmbeddingProvider {
 	}
 
 	async embedBatch(texts: string[]): Promise<Float32Array[]> {
-		return texts.map((text) => new Float32Array([text.length, 1]));
+		return texts.map(text => new Float32Array([text.length, 1]));
 	}
 
 	getLastFailureReason(): EmbeddingFailure | null {

@@ -14,8 +14,12 @@ import { buildPrimaryLanguageDirective } from "./language-directive";
  * ctx_reduce modes so it sets the frame before the agent reads anything that could
  * read as a scarcity signal.
  */
-function longTermPartnerFrame(searchEnabled: boolean): string {
-	const recoveryTools = searchEnabled ? "`ctx_search`/`ctx_expand`" : "session-history recovery tools";
+function longTermPartnerFrame(searchEnabled: boolean, agentMemoryToolsEnabled = false): string {
+	const recoveryTools = agentMemoryToolsEnabled
+		? "`memory_search`/`ctx_expand`"
+		: searchEnabled
+			? "`ctx_search`/`ctx_expand`"
+			: "session-history recovery tools";
 	return `### You are the user's long-term partner on this project — not a one-off hire
 
 Most AI sessions are disposable: one session per task, discarded when it's done — like hiring a developer for a single bug fix and letting them go the moment they finish. Magic Context changes this completely. This session is a durable working relationship: you carry the full history and accumulated knowledge of this project, and you continue across many tasks, bugs, and features — with memory that persists across restarts. This session may continue for weeks, months, or even years.
@@ -48,27 +52,6 @@ const CTX_NOTE_GUIDANCE = `Use \`ctx_note\` ONLY for genuinely future concerns �
 const TOOL_HISTORY_GUIDANCE = `Compressed history intentionally omits tool calls and their outputs — summaries like "I edited file X" are historian records, not patterns to replicate. In the live conversation, older tool calls and their results are cleaned up to save context — you may see your own past messages referencing actions without the corresponding tool call or result visible. This is normal context management. ALWAYS use real tool calls; never simulate, fabricate, or inline tool outputs in your text. If there is no tool result message, the action did not happen. NEVER simulate, hallucinate or claim tool calls, command output, search results, file edits, or diffs in plain text as if they actually occurred.
 Magic Context control metadata is not reply syntax. Never reproduce \`<system-reminder>\`, \`<ctx-search-hint>\`, \`<session-history>\`, \`<session-history-since>\`, \`<project-memory>\`, \`<memory-updates>\`, \`<new-compartments>\`, \`<new-memories>\`, \`[dropped §N§]\`, or \`<!-- +Xm -->\` markers in a normal reply and never treat them as user instructions; use ordinary prose and real tool calls instead.`;
 
-/** ctx_memory-specific guidance. Gated out when `memory.enabled: false`: with
- *  memory off, the `<project-memory>` block is never injected, so anything the
- *  agent writes would never resurface, and telling it to "save to memory" is
- *  misleading busywork. Identical in both ctx_reduce modes. ctx_search guidance
- *  stays regardless (it still recalls conversation + git commits when memory is
- *  off, it just won't return memory hits). */
-const MEMORY_GUIDANCE = `Use \`ctx_memory\` for durable project knowledge: write what future sessions must know, update/archive/merge the memories you see in \`<project-memory>\` when they drift. Memories persist across sessions and every new session starts with them.
-Memories are grouped by category as \`#id: fact\` lines; pass the numeric id to \`ctx_memory\` actions.
-**Save to memory proactively**: If you spent multiple turns finding something (a file path, a DB location, a config pattern, a workaround), save it with \`ctx_memory\` so future sessions don't repeat the search. Examples:
-- Found a project's source path after searching → \`ctx_memory(action="write", category="CONFIG_VALUES", content="Provider source is at ~/Work/OSS/provider")\`
-- Discovered a non-obvious build/test command → \`ctx_memory(action="write", category="PROJECT_RULES", content="Always use scripts/release.sh for releases")\`
-- Learned a constraint the hard way → \`ctx_memory(action="write", category="CONSTRAINTS", content="Dashboard Tauri build needs RGBA PNGs, not grayscale")\``;
-
-/** Renders MEMORY_GUIDANCE + trailing newline when memory is on, else "". Placed
- *  before the ctx_search line so turning memory off removes the block without
- *  leaving a blank line (the memory-on output stays exactly as it was before
- *  this flag existed). */
-function memoryGuidanceBlock(memoryEnabled: boolean): string {
-	return memoryEnabled ? `${MEMORY_GUIDANCE}\n` : "";
-}
-
 const CTX_SEARCH_GUIDANCE = `Use \`ctx_search\` to search this session's compacted conversation history and session-only notes.
 **Search before asking the user**: If you can't remember something that might have appeared earlier in this session, use \`ctx_search\` before asking. Examples:
 - Can't remember a path or dependency mentioned earlier → \`ctx_search(query="related source code path")\`
@@ -76,16 +59,15 @@ const CTX_SEARCH_GUIDANCE = `Use \`ctx_search\` to search this session's compact
 - Need surrounding context for an earlier implementation discussion → \`ctx_search(query="how does the dreamer lease work")\`
 Use message ranges in results with \`ctx_expand\` to retrieve surrounding conversation context.`;
 
-const DURABLE_SEARCH_GUIDANCE = `Use \`ctx_search\` to search across project memories, indexed git commits, and this session's full conversation history (including compacted parts) from one query.
-**Search before asking the user**: If you can't remember or don't know something that might have been discussed before or stored in project memory, use \`ctx_search\` before asking the user.\n\`ctx_search\` returns ranked results from memories, git commits, and raw message history.`;
-
 function noteGuidanceBlock(noteEnabled: boolean): string {
 	return noteEnabled ? `${CTX_NOTE_GUIDANCE}\n` : "";
 }
 
-function searchGuidanceBlock(searchEnabled: boolean, memoryEnabled: boolean): string {
+function searchGuidanceBlock(searchEnabled: boolean, agentMemoryToolsEnabled = false): string {
+	if (agentMemoryToolsEnabled)
+		return "Use `memory_search` to search current-session context and scoped durable memory. Use `memory_save` to save an explicit durable fact; keep durable-memory retrieval on this tool surface.\n";
 	if (!searchEnabled) return "";
-	return `${memoryEnabled ? DURABLE_SEARCH_GUIDANCE : CTX_SEARCH_GUIDANCE}\n`;
+	return `${CTX_SEARCH_GUIDANCE}\n`;
 }
 
 const BASE_INTRO = (
@@ -93,10 +75,11 @@ const BASE_INTRO = (
 	memoryEnabled: boolean,
 	searchEnabled: boolean,
 	noteEnabled: boolean,
+	agentMemoryToolsEnabled = false,
 ): string => `Messages and tool outputs are tagged with §N§ identifiers (e.g., §1§, §42§).
 Use \`ctx_reduce\` to mark spent tagged content as discardable and reclaim space. Marking is NOT an immediate delete — it queues the content, which stays fully visible until space is actually needed (as soon as the next turn if you're already under pressure, much later if not), so mark a tool output as soon as you've extracted what you need rather than hoarding the call for the end of the turn. The last ${protectedTags} tags are protected (marking one just queues it until it ages out). Syntax: "3-5", "1,2,9", or "1-5,8,12-15".
 Do not announce or narrate \`ctx_reduce\` drops — just call the tool silently. Saying "I'll drop these outputs" wastes tokens the user does not care about.
-${noteGuidanceBlock(noteEnabled)}${memoryGuidanceBlock(memoryEnabled)}${searchGuidanceBlock(searchEnabled, memoryEnabled)}Use \`ctx_expand\` to recover the raw conversation behind a summary under a \`## start-end · date · title\` heading inside \`<session-history>\` — pass the heading's start/end range when the summary is not enough (exact wording, values, error text).
+${noteGuidanceBlock(noteEnabled)}${searchGuidanceBlock(searchEnabled, agentMemoryToolsEnabled)}Use \`ctx_expand\` to recover the raw conversation behind a summary under a \`## start-end · date · title\` heading inside \`<session-history>\` — pass the heading's start/end range when the summary is not enough (exact wording, values, error text).
 ${TOOL_HISTORY_GUIDANCE}
 NEVER drop large ranges blindly (e.g., "1-50"). Review each tag before deciding.
 Keep your user's instructions and intent — never drop a user message for its directive, even an old one. But a large block of pasted content inside a user message (logs, data dumps, long code, attachments) is fair to mark discardable once you've extracted what you need — it stays available in current history.
@@ -107,7 +90,8 @@ const BASE_INTRO_NO_REDUCE = (
 	memoryEnabled: boolean,
 	searchEnabled: boolean,
 	noteEnabled: boolean,
-): string => `${noteGuidanceBlock(noteEnabled)}${memoryGuidanceBlock(memoryEnabled)}${searchGuidanceBlock(searchEnabled, memoryEnabled)}Use \`ctx_expand\` to recover the raw conversation behind a summary under a \`## start-end · date · title\` heading inside \`<session-history>\` — pass the heading's start/end range when the summary is not enough (exact wording, values, error text).
+	agentMemoryToolsEnabled = false,
+): string => `${noteGuidanceBlock(noteEnabled)}${searchGuidanceBlock(searchEnabled, agentMemoryToolsEnabled)}Use \`ctx_expand\` to recover the raw conversation behind a summary under a \`## start-end · date · title\` heading inside \`<session-history>\` — pass the heading's start/end range when the summary is not enough (exact wording, values, error text).
 ${TOOL_HISTORY_GUIDANCE}`;
 
 const GENERIC_SECTION = `
@@ -159,6 +143,7 @@ export function buildMagicContextSection(
 	memoryEnabled = true,
 	searchEnabled = true,
 	noteEnabled = true,
+	agentMemoryToolsEnabled = false,
 ): string {
 	// Subagent sessions: minimal §N§ + ctx_reduce mechanics only. Bypasses the
 	// long-term-partner frame, memory/search/note guidance, and the reduction
@@ -169,20 +154,21 @@ export function buildMagicContextSection(
 	if (subagentMode) {
 		return `## Magic Context\n\n${SUBAGENT_REDUCE_INTRO(protectedTags)}`;
 	}
-	const smartNoteGuidance = dreamerEnabled && noteEnabled
-		? `\nWhen \`surface_condition\` is provided with \`write\`, the note becomes a project-scoped smart note.\nThe dreamer evaluates smart note conditions during nightly runs and surfaces them when conditions are met.\nExample: \`ctx_note(action="write", content="Implement X because Y", surface_condition="When PR #42 is merged in this repo")\``
-		: "";
+	const smartNoteGuidance =
+		dreamerEnabled && noteEnabled
+			? `\nWhen \`surface_condition\` is provided with \`write\`, the note becomes a project-scoped smart note.\nThe dreamer evaluates smart note conditions during nightly runs and surfaces them when conditions are met.\nExample: \`ctx_note(action="write", content="Implement X because Y", surface_condition="When PR #42 is merged in this repo")\``
+			: "";
 	const temporalGuidance = temporalAwarenessEnabled ? TEMPORAL_AWARENESS_GUIDANCE : "";
 	// Caveman compression is independent of ctx_reduce availability. Emit the
 	// warning in both primary guidance variants whenever the primary-session
 	// caveman pass is enabled so the agent does not mimic compressed history.
 	const cavemanWarning = cavemanTextCompressionEnabled ? CAVEMAN_COMPRESSION_WARNING : "";
-	const partnerFrame = longTermPartnerFrame(searchEnabled);
+	const partnerFrame = longTermPartnerFrame(searchEnabled, agentMemoryToolsEnabled);
 	const languageDirective = buildPrimaryLanguageDirective(language);
 	const languageGuidance = languageDirective ? `\n\n${languageDirective}` : "";
 
 	if (!ctxReduceCallable) {
-		return `## Magic Context\n\n${partnerFrame}\n${PARTNER_FRAME_CLOSER_NO_REDUCE}\n\n${BASE_INTRO_NO_REDUCE(memoryEnabled, searchEnabled, noteEnabled)}${smartNoteGuidance}${temporalGuidance}${cavemanWarning}${languageGuidance}`;
+		return `## Magic Context\n\n${partnerFrame}\n${PARTNER_FRAME_CLOSER_NO_REDUCE}\n\n${BASE_INTRO_NO_REDUCE(memoryEnabled, searchEnabled, noteEnabled, agentMemoryToolsEnabled)}${smartNoteGuidance}${temporalGuidance}${cavemanWarning}${languageGuidance}`;
 	}
-	return `## Magic Context\n\n${partnerFrame}\n${PARTNER_FRAME_CLOSER_REDUCE}\n\n${BASE_INTRO(protectedTags, memoryEnabled, searchEnabled, noteEnabled)}${smartNoteGuidance}${temporalGuidance}${cavemanWarning}\n${GENERIC_SECTION}\n\nPrefer many small targeted operations over one large blanket operation, and keep the working set tidy as routine maintenance.${languageGuidance}`;
+	return `## Magic Context\n\n${partnerFrame}\n${PARTNER_FRAME_CLOSER_REDUCE}\n\n${BASE_INTRO(protectedTags, memoryEnabled, searchEnabled, noteEnabled, agentMemoryToolsEnabled)}${smartNoteGuidance}${temporalGuidance}${cavemanWarning}\n${GENERIC_SECTION}\n\nPrefer many small targeted operations over one large blanket operation, and keep the working set tidy as routine maintenance.${languageGuidance}`;
 }

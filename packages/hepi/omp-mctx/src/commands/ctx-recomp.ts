@@ -23,7 +23,6 @@ import { createPiHistorianClient } from "../pi-recomp-client-shared";
 import { stagePiRecompMarker } from "../pi-recomp-marker";
 import { isPiRecompInFlight, spawnPiRecompRun } from "../pi-recomp-runner";
 import { readPiSessionMessages } from "../read-session-pi";
-import { updateStatusLine } from "../status-line";
 import { resolveSessionId, sendCtxStatusMessage } from "./pi-command-utils";
 
 interface RecompConfirmation {
@@ -164,16 +163,10 @@ export function registerCtxRecompCommand(pi: ExtensionAPI, deps: RegisterCtxReco
 			// Detached: the recomp runs in the background so the Pi REPL stays
 			// responsive. The result callback reports completion to Pi.
 			// command handler returns right after this call. Provider registration,
-			// the `recomp` status-line flag, shutdown-drain tracking, and cleanup
-			// are owned by spawnPiRecompRun.
+			// shutdown-drain tracking, and cleanup are owned by spawnPiRecompRun.
 			spawnPiRecompRun({
 				sessionId,
 				provider,
-				onStatusChange: () =>
-					updateStatusLine(ctx, {
-						db: currentDeps.db,
-						projectIdentity: ctx.cwd,
-					}),
 				work: async () => {
 					const result = await executeContextRecompWithResult(
 						{

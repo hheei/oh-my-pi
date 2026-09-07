@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { findFirstKeptEntryId } from "../src/pi-historian-runner";
-import {
-	convertEntriesToRawMessages,
-	findLastModelKeyFromBranch,
-	isMidTurnPi,
-} from "../src/read-session-pi";
+import { convertEntriesToRawMessages, findLastModelKeyFromBranch, isMidTurnPi } from "../src/read-session-pi";
 
 describe("isMidTurnPi", () => {
 	it("is mid-turn when the latest assistant stopReason is toolUse", () => {
@@ -201,7 +197,7 @@ describe("convertEntriesToRawMessages: synthetic-user entry-id propagation", () 
 		//   2: asst-1 (real)
 		//   3: synthetic user folding tr-1 — MUST carry tr-1's id
 		//   4: asst-2 (real)
-		expect(raws.map((r) => ({ ordinal: r.ordinal, id: r.id, role: r.role }))).toEqual([
+		expect(raws.map(r => ({ ordinal: r.ordinal, id: r.id, role: r.role }))).toEqual([
 			{ ordinal: 1, id: "user-1", role: "user" },
 			{ ordinal: 2, id: "asst-1", role: "assistant" },
 			{ ordinal: 3, id: "synth-user-tr-1", role: "user" },
@@ -241,6 +237,10 @@ describe("convertEntriesToRawMessages: synthetic-user entry-id propagation", () 
 		expect(synthetic?.role).toBe("user");
 		// First folded toolResult wins — never empty.
 		expect(synthetic?.id).toBe("synth-user-tr-1");
+		expect(synthetic?.sourceLines).toEqual([
+			{ messageId: "tr-1", role: "tool", sourceText: "out-1", toolCallId: "tc-1" },
+			{ messageId: "tr-2", role: "tool", sourceText: "out-2", toolCallId: "tc-2" },
+		]);
 	});
 
 	it("assigns the first folded toolResult's id to a trailing-tail synthetic user", () => {
@@ -302,7 +302,7 @@ describe("convertEntriesToRawMessages: synthetic-user entry-id propagation", () 
 		//   3: asst-2
 		//   4: synthetic user folding tr-2   — id="tr-2"
 		//   5: asst-3
-		expect(raws.map((r) => ({ ordinal: r.ordinal, id: r.id, role: r.role }))).toEqual([
+		expect(raws.map(r => ({ ordinal: r.ordinal, id: r.id, role: r.role }))).toEqual([
 			{ ordinal: 1, id: "asst-1", role: "assistant" },
 			{ ordinal: 2, id: "real-user", role: "user" },
 			{ ordinal: 3, id: "asst-2", role: "assistant" },
@@ -322,9 +322,7 @@ describe("convertEntriesToRawMessages: synthetic-user entry-id propagation", () 
 		// terminated by a final assistant. This is structurally identical
 		// to a tool-heavy autonomous run where the agent fires tools, sees
 		// results, and immediately fires more without user input.
-		const entries: Array<Record<string, unknown>> = [
-			messageEntry("u-0", { role: "user", content: "go" }),
-		];
+		const entries: Array<Record<string, unknown>> = [messageEntry("u-0", { role: "user", content: "go" })];
 		for (let i = 1; i <= 50; i++) {
 			entries.push(
 				messageEntry(`a-${i}`, {
@@ -351,11 +349,11 @@ describe("convertEntriesToRawMessages: synthetic-user entry-id propagation", () 
 		// Every RawMessage must carry a non-empty id, including synthetics.
 		// Pre-fix this assertion failed because synthetic-user emissions
 		// at every toolResult→assistant transition had id="".
-		const empties = raws.filter((r) => !r.id || r.id.length === 0);
+		const empties = raws.filter(r => !r.id || r.id.length === 0);
 		expect(empties).toEqual([]);
 
 		// Ordinals are contiguous from 1.
-		const ordinals = raws.map((r) => r.ordinal);
+		const ordinals = raws.map(r => r.ordinal);
 		expect(ordinals[0]).toBe(1);
 		for (let i = 1; i < ordinals.length; i++) {
 			const prev = ordinals[i - 1] ?? 0;
@@ -459,9 +457,7 @@ describe("findLastModelKeyFromBranch", () => {
 	});
 
 	it("ignores malformed model_change entries (missing provider/modelId)", () => {
-		expect(
-			findLastModelKeyFromBranch([{ type: "model_change", provider: "openai" }]),
-		).toBeUndefined();
+		expect(findLastModelKeyFromBranch([{ type: "model_change", provider: "openai" }])).toBeUndefined();
 		expect(findLastModelKeyFromBranch([])).toBeUndefined();
 		expect(findLastModelKeyFromBranch(null)).toBeUndefined();
 		expect(findLastModelKeyFromBranch(undefined)).toBeUndefined();
