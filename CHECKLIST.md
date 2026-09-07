@@ -16,7 +16,7 @@
 | `@hheei/oh-my-pi` | `1.0.2` | `packages/coding-agent/package.json` 的 `fork.npmName` / `fork.npmVersion` | `.github/workflows/oh-my-pi-publish.yml` 打包后发布 | 仅 `packages/coding-agent/package.json` |
 | `@hheei/omp-optimizer` | `0.1.2` | `packages/hepi/omp-optimizer/package.json` 的 `name` / `version` | `.github/workflows/omp-optimizer-publish.yml` | package manifest 或该 workflow |
 | `@hheei/omp-enhance` | `0.1.0` | `packages/hepi/omp-enhance/package.json` 的 `name` / `version` | `.github/workflows/omp-enhance-publish.yml` | package manifest 或该 workflow |
-| `@hheei/omp-mctx` | `0.1.0` | `packages/hepi/omp-mctx/package.json` 的 `name` / `version` | **没有 CI publish workflow**；它有 `publishConfig.access: public`，但不应默认发布 | 无 |
+| `@hheei/omp-mctx` | `0.1.0` | `packages/hepi/omp-mctx/package.json` 的 `name` / `version` | `.github/workflows/omp-mctx-publish.yml` | package manifest 或该 workflow |
 
 发布 workflow 均先查询 npm；同名同版本已经存在时会跳过 publish。因此发布版本必须是新的、尚未存在的 semver 版本。
 
@@ -50,7 +50,7 @@
 4. 运行最窄的相关验证：
    - `oh-my-pi`：`bun --cwd=packages/coding-agent run check`，以及变更覆盖的测试。
    - `omp-optimizer` / `omp-enhance`：在包目录运行 `bun run check && bun test src`。
-   - `omp-mctx`：在包目录运行 `bun run check` 和该包的 `bun test`。
+   - `omp-mctx`：在包目录运行 `bun run check && bun run test`（不要裸跑 `bun test`）。
 5. 确认 npm 版本尚未发布：
    ```bash
    npm view <package-name>@<version> version --registry=https://registry.npmjs.org
@@ -65,6 +65,7 @@
    gh workflow run oh-my-pi-publish.yml --repo hheei/oh-my-pi --ref main
    gh workflow run omp-optimizer-publish.yml --repo hheei/oh-my-pi --ref main
    gh workflow run omp-enhance-publish.yml --repo hheei/oh-my-pi --ref main
+   gh workflow run omp-mctx-publish.yml --repo hheei/oh-my-pi --ref main
    ```
 3. 观察实际发布结果：
    ```bash
@@ -72,7 +73,6 @@
    gh run view <run-id> --repo hheei/oh-my-pi --log-failed
    npm view <package-name>@<version> version --registry=https://registry.npmjs.org
    ```
-4. `omp-mctx` 在添加专用 trusted-publishing workflow 前，不执行 npm 发布；需要发布时先新增并审查对应 CI workflow。
 
 ## 常见失败处理
 

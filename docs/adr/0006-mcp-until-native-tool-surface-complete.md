@@ -1,3 +1,8 @@
-# Live MCP agentmemory stays until native Tool Surface is complete
+# Historical MCP agentmemory transition
 
-`mcp.json` agentmemory remains enabled until omp-agentmemory registers the full later Tool Surface. The Pi trio may be developed and tested off the daily OMP profile. Enabling the trio while MCP still registers `memory_save` would duplicate a tool. Disabling MCP at trio-only would drop recall, sessions, lessons, consolidate, reflect, and diagnose.
+This ADR records the pre-cutover constraint that MCP and an OMP-native
+agentmemory Tool Surface could not expose the same tools simultaneously. The
+mctx cutover supersedes that arrangement: `omp-mctx` is now the only OMP-side
+bridge and the standalone bridge package is removed. Any remaining MCP
+configuration is outside this extension and must not be used to register a
+duplicate OMP tool surface.

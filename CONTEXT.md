@@ -34,33 +34,46 @@ The in-session compressed conversation surface: compartments, tags, `ctx_reduce`
 _Avoid_: context, memory, Magic Context as a synonym for Durable Memory
 
 **Durable Memory**:
-Cross-session facts stored in Judy. Owned by omp-agentmemory. Not the Window, not `ctx_memory`.
-_Avoid_: project-memory, ctx_memory, Hindsight recall
+Cross-session facts stored in agentmemory. agentmemory is the canonical data owner; `omp-mctx` is the sole OMP bridge owner after cutover. Not the Window, not `ctx_memory`.
+_Avoid_: project-memory, ctx_memory, Hindsight recall, Judy as the store
 
 **omp-mctx**:
-The hepi extension that owns the Window. It does not own Durable Memory and does not ship Handoff.
+The hepi extension that owns the Window and, after cutover, the sole OMP agentmemory bridge. It does not embed or own the agentmemory backend and does not ship Handoff.
 _Avoid_: pi-mctx, @cortexkit/pi-magic-context (those are sources/predecessors, not this package)
 
 **omp-agentmemory**:
-The hepi extension that owns Durable Memory through Judy. Tool Surface and Capture/Inject are its two layers.
+The earlier agentmemory bridge package, scheduled for removal as part of the
+`omp-mctx` cutover. It is not enabled alongside `omp-mctx`.
 _Avoid_: MCP agentmemory, @agentmemory/mcp
 
+**agentmemory**:
+The Durable Memory backend (HTTP `:3111`). OMP talks to it with REST. Other hosts may still reach it via MCP.
+_Avoid_: Judy as a synonym; in-process agentmemory; OMP `memory.backend`
+
 **Judy**:
-The shared agentmemory HTTP service other hosts may still reach via MCP. OMP talks to it with REST.
-_Avoid_: local @agentmemory/mcp, in-process agentmemory
+This machine, the local host that runs agentmemory. Not the backend and not the omp-agentmemory extension.
+_Avoid_: using Judy for Durable Memory, for agentmemory, or for Inject
 
 **Tool Surface**:
-The model-visible Judy tools. First surface is `memory_search` and `memory_save` (no `memory_health` in the tool table). Later surface adds `memory_recall`, `memory_sessions`, `memory_lesson_save`, `memory_consolidate`, `memory_reflect`, `memory_diagnose`. Search keeps the Pi name.
+The model-visible agentmemory tools exposed by the `omp-mctx` bridge. First surface is `memory_search` and `memory_save` (no `memory_health` in the tool table). Later surface adds `memory_recall`, `memory_sessions`, `memory_lesson_save`, `memory_consolidate`, `memory_reflect`, `memory_diagnose`. Search keeps the Pi name.
 _Avoid_: `memory_smart_search`; `memory_health` as a model tool; enabling `memory_save` live while MCP still exposes it
 
 **Health Command**:
-`memory_health` is an OMP slash command, not a model tool. It probes Judy.
+`memory_health` is an OMP slash command, not a model tool. It probes agentmemory.
 _Avoid_: registering `memory_health` on the Tool Surface
 
 **Capture**:
-Posting session observations to Judy from extension lifecycle events (`session_start`, `tool_result`, `agent_end`, `session_shutdown`).
+Posting session observations to agentmemory from `omp-mctx` lifecycle events (`session_start`, `tool_result`, `agent_end`, `session_shutdown`).
 _Avoid_: hook, Integration hook, shell pre/post hooks
 
 **Inject**:
-Putting Judy recall into the model-bound request (`before_agent_start` system prompt). Only one Durable Memory Inject is allowed. Window transforms may still rewrite messages.
+Putting `omp-mctx`'s agentmemory recall into the model-bound request (`before_agent_start` system prompt). Only one Durable Memory Inject is allowed. Window transforms may still rewrite messages.
 _Avoid_: Integration hook, `<project-memory>`
+
+**Episodic**:
+What happened in sessions. Owned by the Window historian as compartments in `<session-history>`.
+_Avoid_: agentmemory session summaries as the coding-prompt autobiography; `mem::context` next to historian
+
+**Semantic**:
+What is true across sessions. Owned by agentmemory and reached by Inject plus `memory_search` / `memory_save`.
+_Avoid_: sqlite `memories`, `ctx_memory`, standing `#id` project-memory rosters
