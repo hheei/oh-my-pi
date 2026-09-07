@@ -138,21 +138,21 @@ describe("ReadToolGroupComponent", () => {
 		const onePathIndex = lines.findIndex(line => line.includes(onePath));
 		const twoPathIndex = lines.findIndex(line => line.includes(twoPath));
 		const threePathIndex = lines.findIndex(line => line.includes(threePath));
-		const firstUsageIndex = lines.findIndex(line => line.includes("2026-01-02 03:04:05"));
+		const firstUsageIndex = lines.findIndex(line => line.includes("1.1K"));
 		const parallelUsageIndices = lines
-			.map((line, index) => (line.includes("2026-01-02 03:04:06") ? index : -1))
+			.map((line, index) => (line.includes("2.2K") ? index : -1))
 			.filter(index => index >= 0);
 
 		expect(lines[onePathIndex + 1]?.trim()).toBe("");
 		expect(firstUsageIndex).toBe(onePathIndex + 2);
-		expect(lines[firstUsageIndex]?.startsWith("2026-01-02")).toBe(true);
+		expect(lines[firstUsageIndex]?.includes("1.1K")).toBe(true);
 		expect(lines[firstUsageIndex]?.startsWith(" ")).toBe(false);
 		expect(lines[firstUsageIndex]?.includes(themeModule.theme.tree.vertical)).toBe(false);
 		expect(twoPathIndex).toBeGreaterThan(firstUsageIndex);
 		expect(threePathIndex).toBeGreaterThan(twoPathIndex);
 		expect(lines[threePathIndex + 1]?.trim()).toBe("");
 		expect(parallelUsageIndices).toEqual([threePathIndex + 2]);
-		expect(lines[parallelUsageIndices[0]!]?.startsWith("2026-01-02")).toBe(true);
+		expect(lines[parallelUsageIndices[0]!]?.includes("2.2K")).toBe(true);
 		expect(lines[parallelUsageIndices[0]!]?.startsWith(" ")).toBe(false);
 	});
 
@@ -351,7 +351,7 @@ describe("ReadToolGroupComponent", () => {
 		const lines = Bun.stripANSI(component.render(120).join("\n")).split("\n");
 		const previewIndex = lines.findIndex(line => line.includes("line 2"));
 		const usageIndices = lines
-			.map((line, index) => (line.includes("2026-01-02 03:04:05") ? index : -1))
+			.map((line, index) => (line.includes("1.2K") ? index : -1))
 			.filter(index => index >= 0);
 		expect(usageIndices).toHaveLength(1);
 		expect(usageIndices[0]).toBeGreaterThan(previewIndex);
