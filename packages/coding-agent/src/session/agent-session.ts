@@ -722,6 +722,7 @@ export class AgentSession {
 	#messageEndPersistenceTail: Promise<void> = Promise.resolve();
 	#pendingMessageEndPersistence = new Map<string, Promise<void>>();
 	#persistedMessageKeys: { anchor: string; keys: Set<string> } | undefined;
+	readonly #ephemeralExtensionMessageIds = new Set<string>();
 
 	// Custom commands (TypeScript slash commands)
 	#customCommands: LoadedCustomCommand[] = [];
@@ -2759,7 +2760,17 @@ export class AgentSession {
 		return entryId;
 	}
 
+	#consumeEphemeralExtensionMessage(message: AgentMessage): boolean {
+		const details =
+			message.role === "custom" && message.details && typeof message.details === "object"
+				? (message.details as { __ompEphemeralExtensionMessageId?: unknown })
+				: undefined;
+		const id = details?.__ompEphemeralExtensionMessageId;
+		return typeof id === "string" && this.#ephemeralExtensionMessageIds.delete(id);
+	}
+
 	#persistSessionMessageIfMissing(message: AgentMessage): void {
+		if (this.#consumeEphemeralExtensionMessage(message)) return;
 		if (
 			message.role !== "user" &&
 			message.role !== "developer" &&
@@ -2826,6 +2837,7 @@ export class AgentSession {
 		// that boundary; never let its delayed persistence append the previous
 		// conversation to the replacement session.
 		if (this.#promptGeneration !== promptGeneration) return;
+		if (this.#consumeEphemeralExtensionMessage(message)) return;
 		if (message.role === "hookMessage" || message.role === "custom") {
 			// One-run instructions must not return from persisted history: prewalk
 			// nudges are consumed once, and Vibe context is rebuilt only while active.
@@ -6404,6 +6416,7 @@ export class AgentSession {
 		this.#beginInFlight();
 		const generation = this.#promptGeneration;
 		this.#promptSequence++;
+		const ephemeralExtensionMessageIds = new Set<string>();
 		try {
 			await this.#recovery.maybeRestoreRetryFallbackPrimary();
 			if (!(await this.#runUsageAwarePreflightForNextModelCall())) return false;
@@ -6520,29 +6533,46 @@ export class AgentSession {
 					options?.images,
 					beforeAgentStartSystemPrompt,
 				);
-				if (result?.messages) {
+				if (result?.messages || result?.ephemeralMessages) {
 					const promptAttribution: "user" | "agent" | undefined =
 						"attribution" in message ? message.attribution : undefined;
-					for (const msg of result.messages) {
+					for (const [msg, ephemeral] of [
+						...(result.messages ?? []).map(value => [value, false] as const),
+						...(result.ephemeralMessages ?? []).map(value => [value, true] as const),
+					]) {
 						const normalized = normalizeCustomMessagePayload(msg);
 						const hasExplicitAttribution =
 							msg !== null &&
 							typeof msg === "object" &&
 							!Array.isArray(msg) &&
 							(msg.attribution === "user" || msg.attribution === "agent");
-						messages.push(
-							await this.#normalizeAgentMessageImages({
-								role: "custom",
-								customType: normalized.customType,
-								content: normalized.content,
-								display: normalized.display,
-								details: normalized.details,
-								attribution: hasExplicitAttribution
-									? normalized.attribution
-									: (promptAttribution ?? (message.role === "user" ? "user" : "agent")),
-								timestamp: Date.now(),
-							}),
-						);
+						const injectedMessage = await this.#normalizeAgentMessageImages({
+							role: "custom",
+							customType: normalized.customType,
+							content: normalized.content,
+							display: normalized.display,
+							details: normalized.details,
+							attribution: hasExplicitAttribution
+								? normalized.attribution
+								: (promptAttribution ?? (message.role === "user" ? "user" : "agent")),
+							timestamp: Date.now(),
+						});
+						if (ephemeral) {
+							const ephemeralId = Bun.randomUUIDv7();
+							if (injectedMessage.role !== "custom")
+								throw new Error("ephemeral extension message must be custom");
+							injectedMessage.details = {
+								...(injectedMessage.details && typeof injectedMessage.details === "object"
+									? injectedMessage.details
+									: injectedMessage.details === undefined
+										? {}
+										: { value: injectedMessage.details }),
+								__ompEphemeralExtensionMessageId: ephemeralId,
+							};
+							ephemeralExtensionMessageIds.add(ephemeralId);
+							this.#ephemeralExtensionMessageIds.add(ephemeralId);
+						}
+						messages.push(injectedMessage);
 					}
 				}
 
@@ -6630,6 +6660,19 @@ export class AgentSession {
 			}
 			return true;
 		} finally {
+			if (ephemeralExtensionMessageIds.size > 0) {
+				this.agent.replaceMessages(
+					this.agent.state.messages.filter(message => {
+						const details =
+							message.role === "custom" && message.details && typeof message.details === "object"
+								? (message.details as { __ompEphemeralExtensionMessageId?: unknown })
+								: undefined;
+						const id = details?.__ompEphemeralExtensionMessageId;
+						return typeof id !== "string" || !ephemeralExtensionMessageIds.has(id);
+					}),
+				);
+				for (const id of ephemeralExtensionMessageIds) this.#ephemeralExtensionMessageIds.delete(id);
+			}
 			// The per-turn before_agent_start override lives only for this turn.
 			this.#tools.clearTurnSystemPromptOverride();
 			this.#usagePreflightReadyForNextModelCall = false;

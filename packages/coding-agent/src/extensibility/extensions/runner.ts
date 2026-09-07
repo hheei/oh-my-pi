@@ -78,6 +78,7 @@ import type {
 /** Combined result from all before_agent_start handlers */
 interface BeforeAgentStartCombinedResult {
 	messages?: NonNullable<BeforeAgentStartEventResult["message"]>[];
+	ephemeralMessages?: NonNullable<BeforeAgentStartEventResult["ephemeralMessage"]>[];
 	systemPrompt?: string[];
 }
 
@@ -1720,6 +1721,7 @@ export class ExtensionRunner {
 	): Promise<BeforeAgentStartCombinedResult | undefined> {
 		const ctx = this.createContext();
 		const messages: NonNullable<BeforeAgentStartEventResult["message"]>[] = [];
+		const ephemeralMessages: NonNullable<BeforeAgentStartEventResult["ephemeralMessage"]>[] = [];
 		let currentSystemPrompt = systemPrompt;
 		let systemPromptModified = false;
 
@@ -1747,6 +1749,7 @@ export class ExtensionRunner {
 					if (result.message) {
 						messages.push(result.message);
 					}
+					if (result.ephemeralMessage) ephemeralMessages.push(result.ephemeralMessage);
 					if (result.systemPrompt !== undefined) {
 						currentSystemPrompt =
 							typeof result.systemPrompt === "string" ? [result.systemPrompt] : result.systemPrompt;
@@ -1756,9 +1759,10 @@ export class ExtensionRunner {
 			}
 		}
 
-		if (messages.length > 0 || systemPromptModified) {
+		if (messages.length > 0 || ephemeralMessages.length > 0 || systemPromptModified) {
 			return {
 				messages: messages.length > 0 ? messages : undefined,
+				ephemeralMessages: ephemeralMessages.length > 0 ? ephemeralMessages : undefined,
 				systemPrompt: systemPromptModified ? currentSystemPrompt : undefined,
 			};
 		}
