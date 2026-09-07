@@ -2,7 +2,7 @@
  * Simple RTK Integration
  *
  * 1. Injects RTK system prompt (tells model to prefix commands with rtk)
- * 2. Rewrites bash commands to add rtk prefix when model forgets
+ * 2. Rewrites bash commands via `rtk rewrite`, plus a bun-test overlay
  * 3. Falls back gracefully if rtk binary is missing
  */
 
@@ -25,16 +25,42 @@ export interface BashCallEvent {
 	input: { command?: unknown };
 }
 
-/**
- * Pure decision + mutation step for the `tool_call` hook.
- *
- * Given a tool-call event and whether RTK is available, mutate `event.input`
- * in place (the SDK's only supported way to patch tool args) when the command
- * is a rewritable bash command. Returns true if the command was rewritten.
- *
- * Extracted from the hook closure so the integration is directly testable
- * without a live ExtensionAPI.
- */
+/** Official `rtk rewrite` lookup. Undefined means RTK has no equivalent. */
+export type RtkRewriteLookup = (
+	command: string,
+) => string | undefined | Promise<string | undefined>;
+
+const RTK_REWRITE_TIMEOUT_MS = 3000;
+
+/** `rtk rewrite`: 0/3 = rewritten, 1 = no equivalent, 2 = denied. */
+export function parseRtkRewriteOutput(
+	exitCode: number,
+	stdout: string,
+	original: string,
+): string | undefined {
+	if (exitCode === 1 || exitCode === 2) return undefined;
+	if (exitCode !== 0 && exitCode !== 3) return undefined;
+	const rewritten = stdout.trim();
+	if (!rewritten || rewritten === original) return undefined;
+	return rewritten;
+}
+
+const SINGLE_QUOTED_SHELL_VALUE = "'(?:'\\\\''|[^'])*'";
+const ENV_ASSIGNMENT_VALUE = `(?:"[^"]*"|${SINGLE_QUOTED_SHELL_VALUE}|[^\\s]+)`;
+const LEADING_ENV_ASSIGNMENT = new RegExp(
+	`^((?:[A-Za-z_][A-Za-z0-9_]*=${ENV_ASSIGNMENT_VALUE}\\s+)*)`,
+);
+
+function commandAfterEnvPrefix(input: string): string {
+	const prefix = input.match(LEADING_ENV_ASSIGNMENT)?.[1] ?? "";
+	return input.slice(prefix.length).trimStart();
+}
+
+function isAlreadyRtkCommand(command: string): boolean {
+	const body = commandAfterEnvPrefix(command.trimStart());
+	return body === "rtk" || body.startsWith("rtk ");
+}
+
 /**
  * Return the list of sudo sub-commands found in parsed chain segments.
  * Each entry is the full segment body (trimmed) that starts with `sudo`.
@@ -42,7 +68,7 @@ export interface BashCallEvent {
  */
 export function detectSudoSegments(parts: string[]): string[] {
 	return parts
-		.filter((p) => !CHAIN_OPERATORS.has(p.trim()))
+		.filter((p) => !(p.trim() in CHAIN_OPERATORS))
 		.map((p) => p.trim())
 		.filter((p) => /^sudo\b/.test(p));
 }
@@ -52,7 +78,10 @@ export function detectSudoSegments(parts: string[]): string[] {
  * intercepted. Directs the model to `sudo_run` when available, otherwise
  * explains the restriction clearly.
  */
-export function buildSudoBlockReason(sudoCmds: string[], hasSudoRunTool: boolean): string {
+export function buildSudoBlockReason(
+	sudoCmds: string[],
+	hasSudoRunTool: boolean,
+): string {
 	const list = sudoCmds.map((c) => `  - ${c}`).join("\n");
 	if (hasSudoRunTool) {
 		return (
@@ -72,10 +101,21 @@ export function buildSudoBlockReason(sudoCmds: string[], hasSudoRunTool: boolean
 	);
 }
 
-export function applyRtkRewrite(
+/**
+ * Pure decision + mutation step for the `tool_call` hook.
+ *
+ * Given a tool-call event and whether RTK is available, mutate `event.input`
+ * in place (the SDK's only supported way to patch tool args) when the command
+ * is a rewritable bash command. Returns true if the command was rewritten.
+ *
+ * Extracted from the hook closure so the integration is directly testable
+ * without a live ExtensionAPI.
+ */
+
+export async function applyRtkRewrite(
 	event: BashCallEvent,
-	opts: { enabled: boolean; rtkAvailable: boolean },
-): boolean {
+	opts: { enabled: boolean; rtkAvailable: boolean; rewrite?: RtkRewriteLookup },
+): Promise<boolean> {
 	if (!opts.enabled) return false;
 	if (!opts.rtkAvailable) return false;
 	if (event.toolName !== "bash") return false;
@@ -83,7 +123,7 @@ export function applyRtkRewrite(
 	const command = event.input?.command;
 	if (typeof command !== "string" || !command) return false;
 
-	const rewritten = rewriteChain(command);
+	const rewritten = await rewriteChain(command, opts.rewrite);
 	if (rewritten === command) return false;
 
 	event.input.command = rewritten;
@@ -92,47 +132,53 @@ export function applyRtkRewrite(
 
 const RTK_SYSTEM_PROMPT = `# RTK — token-optimized command wrapper
 
-Prefix shell commands with \`rtk\` (e.g. \`rtk git status\`). RTK compacts output for git, gh, cargo, npm/pnpm/yarn/bun, tsc, lint, vitest/jest/playwright, docker, kubectl, ls, grep, prisma — and passes anything else through unchanged, so it's always safe.
+Prefix shell commands with \`rtk\` when RTK wraps them (e.g. \`rtk git status\`). The auto-rewriter uses \`rtk rewrite\` as the allowlist and additionally wraps \`bun test\` as \`rtk test bun test\` (failures only). Leave \`npm publish\`, \`cargo publish\`, \`docker login\`, and other unsupported commands raw.
 
-Prefix EVERY segment in a chain, not just the first:
+Prefix EVERY supported segment in a chain, not just the first:
 \`rtk git add . && rtk git commit -m "msg" && rtk git push\`
 
-RTK also has filtering subcommands the auto-rewriter won't add — reach for these yourself when useful: \`rtk err <cmd>\` (errors only), \`rtk summary <cmd>\`, \`rtk log <file>\` (dedup), \`rtk json <file>\` (structure), \`rtk test <cmd>\` (failures only), \`rtk gain\` (savings stats).`;
+RTK also has filtering subcommands the auto-rewriter only adds for \`bun test\`. Reach for these yourself otherwise: \`rtk err <cmd>\` (errors only), \`rtk summary <cmd>\`, \`rtk log <file>\` (dedup), \`rtk json <file>\` (structure), \`rtk test <cmd>\` (failures only), \`rtk gain\` (savings stats).`;
 
-// Commands that should be prefixed with rtk
-const RTK_COMMANDS = new Set([
-	"git",
-	"gh",
-	"ls",
-	"tree",
-	"grep",
-	"cat",
-	"head",
-	"tail",
-	"tsc",
-	"lint",
-	"eslint",
-	"prettier",
-	"next",
-	"cargo",
-	"rustc",
-	"vitest",
-	"playwright",
-	"jest",
-	"test",
-	"pnpm",
-	"npm",
-	"npx",
-	"yarn",
-	"bun",
-	"docker",
-	"kubectl",
-	"aws",
-	"psql",
-	"wc",
-	"prisma",
-	"dotnet",
-]);
+/**
+ * Runners with no `rtk <cmd>` wrapper. Rewrite `bun test …` to
+ * `rtk test bun test …` (RTK's generic failures-only filter).
+ * Do not send other bun subcommands through `rtk test`.
+ */
+const RTK_TEST_SUBCOMMANDS: Record<string, Record<string, true>> = {
+	bun: { test: true },
+};
+
+/** `rtk find` rejects compound predicates/actions; official rewrite still prefixes them. */
+const FIND_UNSAFE_PREDICATE = /(?:^|\s)-(?:not|exec|ok|or|and|o|a)(?:\s|$)/;
+
+function firstNonFlagToken(tokens: readonly string[]): string | undefined {
+	for (const token of tokens) {
+		if (token === "--") continue;
+		if (token.startsWith("-")) continue;
+		return token;
+	}
+	return undefined;
+}
+
+/** `rtk test <body>` when this segment is a known generic test runner. */
+function genericRtkTestRewrite(body: string): string | undefined {
+	const envPrefix = body.match(LEADING_ENV_ASSIGNMENT)?.[1] ?? "";
+	const rest = body.slice(envPrefix.length);
+	const tokens = rest.split(/\s+/).filter(Boolean);
+	const command = tokens[0];
+	if (!command || command === "rtk") return undefined;
+	const testSubs = RTK_TEST_SUBCOMMANDS[command];
+	if (!testSubs) return undefined;
+	const subcommand = firstNonFlagToken(tokens.slice(1));
+	if (subcommand === undefined || !(subcommand in testSubs)) return undefined;
+	return `${envPrefix}rtk test ${rest}`;
+}
+
+function undoUnsafeFindPrefix(body: string): string {
+	if (!/^rtk\s+find\b/.test(body)) return body;
+	const raw = body.replace(/^rtk\s+/, "");
+	return FIND_UNSAFE_PREDICATE.test(raw) ? raw : body;
+}
 
 interface RtkStatus {
 	available: boolean;
@@ -140,7 +186,9 @@ interface RtkStatus {
 }
 
 /** Probe the command we actually use instead of relying on a platform-specific locator. */
-export function probeRtkAvailability(pi: Pick<ExtensionAPI, "exec">): Promise<boolean> {
+export function probeRtkAvailability(
+	pi: Pick<ExtensionAPI, "exec">,
+): Promise<boolean> {
 	return canExecute(pi, "rtk", ["--version"]);
 }
 
@@ -196,37 +244,88 @@ export function splitChain(command: string): string[] | null {
 	return out;
 }
 
-const CHAIN_OPERATORS = new Set(["&&", "||", ";", "|"]);
+const CHAIN_OPERATORS: Record<string, true> = {
+	"&&": true,
+	"||": true,
+	";": true,
+	"|": true,
+};
 
-/**
- * Prefix each command segment with `rtk` when its first word is a known
- * RTK command and it is not already prefixed. Operators are preserved.
- * Returns the rewritten command, or the original if nothing changed.
- */
-export function rewriteChain(command: string): string {
+function mapCommandSegments(
+	command: string,
+	mapBody: (body: string) => string,
+): string {
 	const parts = splitChain(command);
-	if (!parts) return command; // unparseable — leave untouched
-
+	if (!parts) return command;
 	let changed = false;
 	const rewritten = parts.map((part) => {
-		if (CHAIN_OPERATORS.has(part.trim())) return part;
-
+		if (part.trim() in CHAIN_OPERATORS) return part;
 		const leading = part.match(/^\s*/)?.[0] ?? "";
 		const body = part.slice(leading.length);
 		if (!body) return part;
-
-		const firstWord = body.split(/\s+/)[0] ?? "";
-		if (firstWord === "rtk") return part;
-		if (!RTK_COMMANDS.has(firstWord)) return part;
-
+		const next = mapBody(body);
+		if (next === body) return part;
 		changed = true;
-		return `${leading}rtk ${body}`;
+		return `${leading}${next}`;
 	});
-
 	return changed ? rewritten.join("") : command;
 }
 
-export function rtk(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle {
+/** Ask `rtk rewrite` via spawn. Used by tests without an ExtensionAPI. */
+export function rtkRewriteLookup(command: string): string | undefined {
+	try {
+		const result = Bun.spawnSync(["rtk", "rewrite", "--", command], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		if (result.exitCode === null) return undefined;
+		const stdout = result.stdout ? new TextDecoder().decode(result.stdout) : "";
+		return parseRtkRewriteOutput(result.exitCode, stdout, command);
+	} catch {
+		return undefined;
+	}
+}
+
+/** Ask `rtk rewrite` through Pi's executor with a timeout. */
+export function createRtkExecLookup(
+	pi: Pick<ExtensionAPI, "exec">,
+): RtkRewriteLookup {
+	return async (command) => {
+		try {
+			const result = await pi.exec("rtk", ["rewrite", "--", command], {
+				timeout: RTK_REWRITE_TIMEOUT_MS,
+			});
+			return parseRtkRewriteOutput(result.code, result.stdout ?? "", command);
+		} catch {
+			return undefined;
+		}
+	};
+}
+
+/**
+ * Rewrite a bash command using official `rtk rewrite`, then apply fork overlays:
+ * `bun test` → `rtk test bun test`, and unwrap `rtk find` with -not/-exec.
+ * Pass `lookup` in tests. Returns the original string if nothing changed.
+ */
+export async function rewriteChain(
+	command: string,
+	lookup: RtkRewriteLookup = rtkRewriteLookup,
+): Promise<string> {
+	if (!splitChain(command)) return command;
+	const official = isAlreadyRtkCommand(command)
+		? command
+		: ((await lookup(command)) ?? command);
+	const afterFind = mapCommandSegments(official, undoUnsafeFindPrefix);
+	return mapCommandSegments(
+		afterFind,
+		(body) => genericRtkTestRewrite(body) ?? body,
+	);
+}
+
+export function rtk(
+	pi: ExtensionAPI,
+	status: OptimizerStatus,
+): OptimizerHandle {
 	let rtkStatus: RtkStatus | null = null;
 	let warnedMissing = false;
 	let enabled = true;
@@ -265,7 +364,6 @@ export function rtk(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle 
 		return { systemPrompt: [RTK_SYSTEM_PROMPT, ...event.systemPrompt] };
 	});
 
-
 	// Keep the status indicator in sync across the agent lifecycle. Probe
 	// availability on session start so the icon reflects reality immediately.
 	pi.on("session_start", async (_event, ctx) => {
@@ -291,7 +389,10 @@ export function rtk(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle 
 
 	// -- Overlay value handler (called by the /optimizer overlay) --
 
-	async function run(value: string, ctx: ExtensionCommandContext): Promise<void> {
+	async function run(
+		value: string,
+		ctx: ExtensionCommandContext,
+	): Promise<void> {
 		enabled = value === "on";
 		await saveOptValue("rtk", enabled ? "on" : "off");
 
@@ -338,10 +439,13 @@ export function rtk(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle 
 			}
 		}
 
-		// Rewrite every segment in the command chain that uses a known RTK
-		// command (e.g. `git add . && git push` -> `rtk git add . && rtk git push`).
+		// Rewrite via `rtk rewrite` plus bun-test overlay.
 		// Mutates `event.input.command` in place — the SDK's supported patch path.
-		applyRtkRewrite(event, { enabled, rtkAvailable: probe.available });
+		await applyRtkRewrite(event, {
+			enabled,
+			rtkAvailable: probe.available,
+			rewrite: createRtkExecLookup(pi),
+		});
 		return undefined;
 	});
 

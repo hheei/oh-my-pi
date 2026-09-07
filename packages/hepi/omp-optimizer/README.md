@@ -58,8 +58,11 @@ The status cell shows which tools are active.
 
 - **Caveman**: choose `off`, `lite`, `full`, `ultra`, or `micro` to control
   response terseness.
-- **RTK**: when `rtk` is installed, supported bash chains are rewritten to use
-  it. Direct `sudo` segments use OMP's permission flow instead.
+- **RTK**: when `rtk` is installed, bash chains go through `rtk rewrite` (exit 0/3
+  rewrite, 1/2 leave raw) via `pi.exec` with a timeout. `bun test` becomes
+  `rtk test bun test`. `npm publish` / `cargo publish` stay raw. `find` with
+  `-not`/`-exec` is left unwrapped because `rtk find` rejects those predicates.
+  Direct `sudo` segments use OMP's permission flow instead.
 - **Ponytail**: choose a level to inject minimal-code/YAGNI implementation
   guidance.
 - **T2S**: converts interactive Traditional Chinese prose to Simplified

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2]
+
+### Changed
+
+- Delegate supported Bash rewriting to RTK's `rtk rewrite` command, preserving its allowlist and safety decisions.
+- Route `bun test` through RTK's failures-only `rtk test` mode and leave unsafe `find` predicates unwrapped.
+
 ## [0.1.1]
 
 ### Changed

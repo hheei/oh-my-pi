@@ -5,7 +5,9 @@ import {
 	type BashCallEvent,
 	buildSudoBlockReason,
 	detectSudoSegments,
+	parseRtkRewriteOutput,
 	probeRtkAvailability,
+	type RtkRewriteLookup,
 	rewriteChain,
 	splitChain,
 } from "./rtk.ts";
@@ -24,14 +26,23 @@ describe("probeRtkAvailability", () => {
 			killed: false,
 		}));
 
-		expect(await probeRtkAvailability({ exec } as Pick<ExtensionAPI, "exec">)).toBe(true);
+		expect(
+			await probeRtkAvailability({ exec } as Pick<ExtensionAPI, "exec">),
+		).toBe(true);
 		expect(exec).toHaveBeenCalledWith("rtk", ["--version"], { timeout: 3000 });
 	});
 
 	it("rejects an unsuccessful version check", async () => {
-		const exec = mock(async () => ({ stdout: "", stderr: "missing", code: 1, killed: false }));
+		const exec = mock(async () => ({
+			stdout: "",
+			stderr: "missing",
+			code: 1,
+			killed: false,
+		}));
 
-		expect(await probeRtkAvailability({ exec } as Pick<ExtensionAPI, "exec">)).toBe(false);
+		expect(
+			await probeRtkAvailability({ exec } as Pick<ExtensionAPI, "exec">),
+		).toBe(false);
 	});
 
 	it("treats a spawn failure as unavailable", async () => {
@@ -39,7 +50,9 @@ describe("probeRtkAvailability", () => {
 			throw new Error("ENOENT");
 		});
 
-		expect(await probeRtkAvailability({ exec } as Pick<ExtensionAPI, "exec">)).toBe(false);
+		expect(
+			await probeRtkAvailability({ exec } as Pick<ExtensionAPI, "exec">),
+		).toBe(false);
 	});
 });
 
@@ -49,7 +62,11 @@ describe("splitChain", () => {
 	});
 
 	it("splits on && keeping operator", () => {
-		expect(splitChain("git add . && git push")).toEqual(["git add . ", "&&", " git push"]);
+		expect(splitChain("git add . && git push")).toEqual([
+			"git add . ",
+			"&&",
+			" git push",
+		]);
 	});
 
 	it("splits on ||, ;, |", () => {
@@ -59,7 +76,9 @@ describe("splitChain", () => {
 	});
 
 	it("ignores operators inside double quotes", () => {
-		expect(splitChain('git commit -m "a && b"')).toEqual(['git commit -m "a && b"']);
+		expect(splitChain('git commit -m "a && b"')).toEqual([
+			'git commit -m "a && b"',
+		]);
 	});
 
 	it("ignores operators inside single quotes", () => {
@@ -71,58 +90,133 @@ describe("splitChain", () => {
 	});
 });
 
-describe("rewriteChain", () => {
-	it("prefixes a single known command", () => {
-		expect(rewriteChain("git status")).toBe("rtk git status");
-	});
-
-	it("prefixes every segment in a chain", () => {
-		expect(rewriteChain("git add . && git commit -m x && git push")).toBe(
-			"rtk git add . && rtk git commit -m x && rtk git push",
+describe("parseRtkRewriteOutput", () => {
+	it("accepts rtk rewrite success codes", () => {
+		expect(parseRtkRewriteOutput(0, "rtk git status", "git status")).toBe(
+			"rtk git status",
+		);
+		expect(parseRtkRewriteOutput(3, "rtk git status", "git status")).toBe(
+			"rtk git status",
 		);
 	});
 
-	it("prefixes mixed known commands", () => {
-		expect(rewriteChain("cargo build && npm test")).toBe("rtk cargo build && rtk npm test");
+	it("rejects no-match, deny, and empty or identical stdout", () => {
+		expect(
+			parseRtkRewriteOutput(1, "rtk git status", "git status"),
+		).toBeUndefined();
+		expect(
+			parseRtkRewriteOutput(2, "rtk git status", "git status"),
+		).toBeUndefined();
+		expect(parseRtkRewriteOutput(0, "", "git status")).toBeUndefined();
+		expect(
+			parseRtkRewriteOutput(3, "git status", "git status"),
+		).toBeUndefined();
+		expect(
+			parseRtkRewriteOutput(99, "rtk git status", "git status"),
+		).toBeUndefined();
+	});
+});
+
+describe("rewriteChain", () => {
+	it("applies official rewrite then bun-test overlay", async () => {
+		const lookup: RtkRewriteLookup = (cmd) =>
+			cmd === "bun test && git status"
+				? "bun test && rtk git status"
+				: undefined;
+		expect(await rewriteChain("bun test && git status", lookup)).toBe(
+			"rtk test bun test && rtk git status",
+		);
 	});
 
-	it("leaves unknown commands alone", () => {
-		expect(rewriteChain("echo hi && mkdir x")).toBe("echo hi && mkdir x");
+	it("leaves lookup misses unchanged except bun test", async () => {
+		const lookup: RtkRewriteLookup = () => undefined;
+		expect(await rewriteChain("echo hi && mkdir x", lookup)).toBe(
+			"echo hi && mkdir x",
+		);
+		expect(await rewriteChain("bun pm pack", lookup)).toBe("bun pm pack");
+		expect(await rewriteChain("bun run test", lookup)).toBe("bun run test");
+		expect(await rewriteChain("npm publish --access public", lookup)).toBe(
+			"npm publish --access public",
+		);
+		expect(await rewriteChain("bun test src/rtk.test.ts", lookup)).toBe(
+			"rtk test bun test src/rtk.test.ts",
+		);
+		expect(await rewriteChain("FOO=1 bun test", lookup)).toBe(
+			"FOO=1 rtk test bun test",
+		);
 	});
 
-	it("does not prefix find (rtk find rejects -not/-exec)", () => {
+	it("unwraps rtk find when the command uses -not/-exec", async () => {
 		const cmd = "find . -type f -not -path '*/node_modules/*'";
-		expect(rewriteChain(cmd)).toBe(cmd);
+		const lookup: RtkRewriteLookup = () => `rtk ${cmd}`;
+		expect(await rewriteChain(cmd, lookup)).toBe(cmd);
 	});
 
-	it("only prefixes known segments in a mixed chain", () => {
-		expect(rewriteChain("cd /tmp && git status")).toBe("cd /tmp && rtk git status");
+	it("keeps rtk find when predicates are safe", async () => {
+		const lookup: RtkRewriteLookup = () => "rtk find . -name '*.ts'";
+		expect(await rewriteChain("find . -name '*.ts'", lookup)).toBe(
+			"rtk find . -name '*.ts'",
+		);
 	});
 
-	it("does not double-prefix already-rtk commands", () => {
-		expect(rewriteChain("rtk git status")).toBe("rtk git status");
-		expect(rewriteChain("rtk git add . && git push")).toBe("rtk git add . && rtk git push");
+	it("does not call lookup for already-rtk commands, including env prefixes", async () => {
+		let called = false;
+		const lookup: RtkRewriteLookup = () => {
+			called = true;
+			return "rtk rtk git status";
+		};
+		expect(await rewriteChain("rtk git status", lookup)).toBe("rtk git status");
+		expect(await rewriteChain("CI=1 rtk git status", lookup)).toBe(
+			"CI=1 rtk git status",
+		);
+		expect(called).toBe(false);
 	});
 
-	it("does not touch operators inside quotes", () => {
-		expect(rewriteChain('git commit -m "a && b"')).toBe('rtk git commit -m "a && b"');
-	});
-
-	it("returns original on unbalanced quotes", () => {
+	it("skips unparseable commands without calling lookup", async () => {
+		let called = false;
+		const lookup: RtkRewriteLookup = () => {
+			called = true;
+			return "rtk git status";
+		};
 		const cmd = 'git commit -m "oops';
-		expect(rewriteChain(cmd)).toBe(cmd);
+		expect(await rewriteChain(cmd, lookup)).toBe(cmd);
+		expect(called).toBe(false);
+	});
+});
+
+const hasRtk = Bun.which("rtk") !== null;
+
+describe.skipIf(!hasRtk)("rewriteChain via rtk rewrite", () => {
+	it("rewrites supported chains the way rtk rewrite does", async () => {
+		expect(await rewriteChain("git status")).toBe("rtk git status");
+		expect(await rewriteChain("git add . && git commit -m x && git push")).toBe(
+			"rtk git add . && rtk git commit -m x && rtk git push",
+		);
+		expect(await rewriteChain("cargo test && npm publish")).toBe(
+			"rtk cargo test && npm publish",
+		);
+		expect(await rewriteChain("npm run build")).toBe("rtk npm run build");
+		expect(await rewriteChain("npx tsc --noEmit")).toBe("rtk tsc --noEmit");
 	});
 
-	it("prefixes known commands across a pipe (ls, wc)", () => {
-		expect(rewriteChain("ls -la | wc -l")).toBe("rtk ls -la | rtk wc -l");
+	it("does not wrap registry, login, or npm test", async () => {
+		expect(await rewriteChain("npm publish --access public")).toBe(
+			"npm publish --access public",
+		);
+		expect(await rewriteChain("npm test")).toBe("npm test");
+		expect(await rewriteChain("cargo publish")).toBe("cargo publish");
+		expect(await rewriteChain("docker login")).toBe("docker login");
 	});
 
-	it("truly leaves a chain of only-unknown commands untouched", () => {
-		expect(rewriteChain("cd /tmp | sort | uniq")).toBe("cd /tmp | sort | uniq");
+	it("wraps bun test even though rtk rewrite does not", async () => {
+		expect(await rewriteChain("bun test")).toBe("rtk test bun test");
+		expect(await rewriteChain("bun test && npm publish --access public")).toBe(
+			"rtk test bun test && npm publish --access public",
+		);
 	});
 
-	it("handles pipes between known commands", () => {
-		expect(rewriteChain("git log | grep fix")).toBe("rtk git log | rtk grep fix");
+	it("inserts rtk after env assignments", async () => {
+		expect(await rewriteChain("FOO=1 cargo test")).toBe("FOO=1 rtk cargo test");
 	});
 });
 
@@ -134,7 +228,9 @@ describe("detectSudoSegments", () => {
 	});
 
 	it("detects a plain sudo segment", () => {
-		expect(detectSudoSegments(["sudo apt-get install foo"])).toEqual(["sudo apt-get install foo"]);
+		expect(detectSudoSegments(["sudo apt-get install foo"])).toEqual([
+			"sudo apt-get install foo",
+		]);
 	});
 
 	it("detects sudo in a chain (operators excluded)", () => {
@@ -144,7 +240,10 @@ describe("detectSudoSegments", () => {
 
 	it("detects multiple sudo segments", () => {
 		const parts = ["sudo rm -rf /tmp ", ";", " sudo reboot"];
-		expect(detectSudoSegments(parts)).toEqual(["sudo rm -rf /tmp", "sudo reboot"]);
+		expect(detectSudoSegments(parts)).toEqual([
+			"sudo rm -rf /tmp",
+			"sudo reboot",
+		]);
 	});
 
 	it("does not match 'sudoer' or 'pseudo'", () => {
@@ -179,7 +278,10 @@ describe("buildSudoBlockReason", () => {
 	});
 
 	it("lists all blocked commands", () => {
-		const reason = buildSudoBlockReason(["sudo rm -rf /tmp", "sudo reboot"], true);
+		const reason = buildSudoBlockReason(
+			["sudo rm -rf /tmp", "sudo reboot"],
+			true,
+		);
 		expect(reason).toContain("sudo rm -rf /tmp");
 		expect(reason).toContain("sudo reboot");
 	});
@@ -189,25 +291,33 @@ describe("buildSudoBlockReason", () => {
 // silently disabled rewriting: wrong event name + wrong field + wrong patch
 // mechanism. They assert on the IN-PLACE mutation contract the SDK requires.
 describe("applyRtkRewrite (tool_call hook step)", () => {
-	it("mutates event.input.command in place for a known bash command", () => {
+	it("mutates event.input.command in place for a known bash command", async () => {
 		const event = bashEvent("git status");
-		const changed = applyRtkRewrite(event, {
+		const changed = await applyRtkRewrite(event, {
 			enabled: true,
 			rtkAvailable: true,
+			rewrite: (cmd) => (cmd === "git status" ? "rtk git status" : undefined),
 		});
 		expect(changed).toBe(true);
 		expect(event.input.command).toBe("rtk git status");
 	});
 
-	it("rewrites every segment of a chain in place", () => {
+	it("rewrites every segment of a chain in place", async () => {
 		const event = bashEvent("git add . && git push");
-		applyRtkRewrite(event, { enabled: true, rtkAvailable: true });
+		await applyRtkRewrite(event, {
+			enabled: true,
+			rtkAvailable: true,
+			rewrite: (cmd) =>
+				cmd === "git add . && git push"
+					? "rtk git add . && rtk git push"
+					: undefined,
+		});
 		expect(event.input.command).toBe("rtk git add . && rtk git push");
 	});
 
-	it("does not mutate when disabled", () => {
+	it("does not mutate when disabled", async () => {
 		const event = bashEvent("git status");
-		const changed = applyRtkRewrite(event, {
+		const changed = await applyRtkRewrite(event, {
 			enabled: false,
 			rtkAvailable: true,
 		});
@@ -215,9 +325,9 @@ describe("applyRtkRewrite (tool_call hook step)", () => {
 		expect(event.input.command).toBe("git status");
 	});
 
-	it("does not mutate when rtk binary is unavailable", () => {
+	it("does not mutate when rtk binary is unavailable", async () => {
 		const event = bashEvent("git status");
-		const changed = applyRtkRewrite(event, {
+		const changed = await applyRtkRewrite(event, {
 			enabled: true,
 			rtkAvailable: false,
 		});
@@ -225,12 +335,12 @@ describe("applyRtkRewrite (tool_call hook step)", () => {
 		expect(event.input.command).toBe("git status");
 	});
 
-	it("ignores non-bash tools", () => {
+	it("ignores non-bash tools", async () => {
 		const event: BashCallEvent = {
 			toolName: "grep",
 			input: { command: "git status" },
 		};
-		const changed = applyRtkRewrite(event, {
+		const changed = await applyRtkRewrite(event, {
 			enabled: true,
 			rtkAvailable: true,
 		});
@@ -238,38 +348,45 @@ describe("applyRtkRewrite (tool_call hook step)", () => {
 		expect(event.input.command).toBe("git status");
 	});
 
-	it("leaves unknown commands untouched", () => {
+	it("leaves unknown commands untouched", async () => {
 		const event = bashEvent("mkdir build && cd build");
-		const changed = applyRtkRewrite(event, {
+		const changed = await applyRtkRewrite(event, {
 			enabled: true,
 			rtkAvailable: true,
+			rewrite: () => undefined,
 		});
 		expect(changed).toBe(false);
 		expect(event.input.command).toBe("mkdir build && cd build");
 	});
 
-	it("does not double-prefix an already-rtk command", () => {
+	it("does not double-prefix an already-rtk command", async () => {
 		const event = bashEvent("rtk git status");
-		const changed = applyRtkRewrite(event, {
+		const changed = await applyRtkRewrite(event, {
 			enabled: true,
 			rtkAvailable: true,
+			rewrite: () => "rtk rtk git status",
 		});
 		expect(changed).toBe(false);
 		expect(event.input.command).toBe("rtk git status");
 	});
 
-	it("handles missing / non-string command safely", () => {
+	it("handles missing / non-string command safely", async () => {
 		const event: BashCallEvent = { toolName: "bash", input: {} };
-		expect(applyRtkRewrite(event, { enabled: true, rtkAvailable: true })).toBe(false);
+		expect(
+			await applyRtkRewrite(event, { enabled: true, rtkAvailable: true }),
+		).toBe(false);
 		const event2: BashCallEvent = { toolName: "bash", input: { command: 123 } };
-		expect(applyRtkRewrite(event2, { enabled: true, rtkAvailable: true })).toBe(false);
+		expect(
+			await applyRtkRewrite(event2, { enabled: true, rtkAvailable: true }),
+		).toBe(false);
 	});
 
-	it("leaves command unchanged on unbalanced quotes", () => {
+	it("leaves command unchanged on unbalanced quotes", async () => {
 		const event = bashEvent('git commit -m "oops');
-		const changed = applyRtkRewrite(event, {
+		const changed = await applyRtkRewrite(event, {
 			enabled: true,
 			rtkAvailable: true,
+			rewrite: () => "rtk git status",
 		});
 		expect(changed).toBe(false);
 		expect(event.input.command).toBe('git commit -m "oops');
