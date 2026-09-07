@@ -350,9 +350,7 @@ describe("ReadToolGroupComponent", () => {
 
 		const lines = Bun.stripANSI(component.render(120).join("\n")).split("\n");
 		const previewIndex = lines.findIndex(line => line.includes("line 2"));
-		const usageIndices = lines
-			.map((line, index) => (line.includes("1.2K") ? index : -1))
-			.filter(index => index >= 0);
+		const usageIndices = lines.map((line, index) => (line.includes("1.2K") ? index : -1)).filter(index => index >= 0);
 		expect(usageIndices).toHaveLength(1);
 		expect(usageIndices[0]).toBeGreaterThan(previewIndex);
 	});
