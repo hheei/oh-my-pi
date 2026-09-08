@@ -18,13 +18,13 @@ export type AgentMemoryIdentityResolver = (cwd: string) => AgentMemoryProjectIde
 export type AgentMemorySessionContext =
 	| Pick<ExtensionContext, "cwd" | "sessionManager">
 	| {
-			cwd: string;
-			sessionManager?: {
-				getSessionId?: () => string | undefined;
-				getSessionFile?: () => string | undefined;
-				getBranch?: () => readonly unknown[];
-			};
-	  };
+		cwd: string;
+		sessionManager?: {
+			getSessionId?: () => string | undefined;
+			getSessionFile?: () => string | undefined;
+			getBranch?: () => readonly unknown[];
+		};
+	};
 
 export type AgentMemorySessionManagerOptions = {
 	client: AgentMemoryClientPort;
@@ -125,7 +125,7 @@ export class AgentMemorySessionManager {
 				hookType: input.hookType,
 				data: input.data,
 				timestamp: input.timestamp ?? new Date().toISOString(),
-				...(input.cwd ? { cwd: input.cwd } : {}),
+				cwd: input.cwd ?? binding.cwd,
 				sessionId: binding.agentmemorySessionId,
 				project: binding.project,
 			};
