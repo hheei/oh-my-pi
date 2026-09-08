@@ -30,83 +30,83 @@
 			"enabled": {
 				"type": "boolean",
 				"default": false,
-				"description": "Master switch for Magic Context. Enables continuous session window management, turn compaction, tag tracking, and context reduction."
+				"description": "Master switch for Magic Context session window management, continuous turn compaction, and context reduction."
 			},
 			"searchEnabled": {
 				"type": "boolean",
 				"default": true,
-				"description": "Expose the standalone 'ctx_search' tool for local session history search. (Automatically superseded by unified 'memory_search' when AgentMemory tools are enabled)."
+				"description": "Registers the 'ctx_search' tool for session-history retrieval. Superseded by 'memory_search' when AgentMemory tools are active."
 			},
 			"noteEnabled": {
 				"type": "boolean",
 				"default": true,
-				"description": "Expose the local SQLite note tool 'ctx_note'. Set to false when using AgentMemory so the agent relies exclusively on durable memory (memory_save)."
+				"description": "Registers the 'ctx_note' tool for session-scoped notes and nudges."
 			},
 			"historianEnabled": {
 				"type": "boolean",
 				"default": true,
-				"description": "Enable background LLM-driven session compaction (Historian), which automatically summarizes older turns into <session-history> when historianModel is configured."
+				"description": "Enables background session compaction (Historian) to summarize older turns into <session-history>."
 			},
 			"historianModel": {
 				"type": "string",
 				"default": "",
-				"description": "Provider/model ID used for background Historian compaction (e.g. 'gm/gemini-3.8-flash' or 'lmxu/gpt-5.6-sol'). Do not append thinking level here; use historianThinkingLevel instead. Empty keeps Historian inactive."
+				"description": "Model identifier for background Historian compaction, for example 'gm/gemini-3.8-flash' or 'lmxu/gpt-5.6-sol'. Empty keeps Historian inactive."
 			},
 			"historianThinkingLevel": {
 				"type": "string",
 				"default": "",
-				"description": "Optional reasoning/thinking effort level for the Historian compaction model ('off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'). Empty uses the model default."
+				"description": "Reasoning effort level for the Historian compaction model: 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', or 'max'. Empty uses the model default."
 			},
 			"agentmemory.enabled": {
 				"type": "boolean",
 				"default": false,
-				"description": "Master switch to connect OMP to an external AgentMemory service for cross-session durable memory, project knowledge, and automated recall."
+				"description": "Enables the bridge to an external AgentMemory service for cross-session durable memory and recall."
 			},
 			"agentmemory.url": {
 				"type": "string",
 				"default": "http://127.0.0.1:3111",
-				"description": "Base URL of the AgentMemory REST service (e.g. 'http://127.0.0.1:3111' or Tailscale node URL). AGENTMEMORY_URL overrides this."
+				"description": "AgentMemory service REST endpoint URL. AGENTMEMORY_URL environment variable overrides this."
 			},
 			"agentmemory.secret": {
 				"type": "string",
 				"default": "",
 				"secret": true,
-				"description": "Bearer token authentication secret for the AgentMemory service. AGENTMEMORY_SECRET overrides this."
+				"description": "Bearer token secret for authenticating with the AgentMemory service. AGENTMEMORY_SECRET overrides this."
 			},
 			"agentmemory.project": {
 				"type": "string",
 				"default": "",
-				"description": "Explicit project name used to scope memories in AgentMemory. Blank defaults to the Git repository root or working directory."
+				"description": "Project namespace for scoping memories in AgentMemory. Defaults to the Git repository root or working directory."
 			},
 			"agentmemory.agentId": {
 				"type": "string",
 				"default": "",
-				"description": "Optional agent tag identifying this OMP instance in AgentMemory. AGENT_ID overrides this."
+				"description": "Agent identifier tag passed to AgentMemory. AGENT_ID environment variable overrides this."
 			},
 			"agentmemory.capture": {
 				"type": "boolean",
 				"default": true,
-				"description": "Automatically capture session lifecycle events, tool outputs, and assistant observations to AgentMemory for background learning and indexing."
+				"description": "Captures session lifecycle events, tool outputs, and assistant observations to AgentMemory for background indexing."
 			},
 			"agentmemory.inject": {
 				"type": "boolean",
 				"default": true,
-				"description": "Automatically recall relevant long-term memories and inject them as a cache-stable Context Projection block after each user message. Disable for tool-only search."
+				"description": "Admits automatic memory recall as a cache-stable Context Projection block following each user turn."
 			},
 			"agentmemory.historianRetrieval": {
 				"type": "boolean",
 				"default": true,
-				"description": "Allow the background Historian compaction process to query AgentMemory to produce richer, memory-aware session summaries."
+				"description": "Allows the background Historian compaction process to query AgentMemory for project context."
 			},
 			"agentmemory.memoryTools": {
 				"type": "boolean",
 				"default": true,
-				"description": "Expose AgentMemory tools to the agent: 'memory_search' (federated search across session context and durable memories) and 'memory_save' (explicit durable fact write)."
+				"description": "Exposes AgentMemory tools to the agent: 'memory_search' (federated search) and 'memory_save' (durable memory write)."
 			},
 			"agentmemory.requireHttps": {
 				"type": "boolean",
 				"default": false,
-				"description": "Fail closed with an error if a bearer secret would be transmitted over plaintext HTTP to a non-loopback host. Default false allows Tailscale/LAN HTTP."
+				"description": "Enforces HTTPS when sending bearer authentication to non-loopback hosts. Default false permits private networks such as Tailscale."
 			}
 		}
 	},

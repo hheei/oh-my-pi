@@ -144,19 +144,19 @@ All switches take effect at reload/restart (Pi registers tools once per process)
 
 | Setting | Default | Role & Interaction Notes |
 | --- | --- | --- |
-| `enabled` | `false` | Master switch for the Magic Context extension. When `false`, the extension does not register tools, hooks, or transforms. |
-| `historianEnabled` | `true` | Enables background LLM-driven session compaction into `<session-history>`. Requires `historianModel` to be set. |
-| `historianModel` | `""` | Provider/model ID for Historian compaction (e.g. `gm/gemini-3.8-flash` or `lmxu/gpt-5.6-sol`). Do not append `:thinking` here; configure `historianThinkingLevel` separately. Empty keeps Historian inactive. |
-| `historianThinkingLevel` | `""` | Reasoning effort for Historian subagent: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Empty uses provider default. |
-| `searchEnabled` | `true` | Exposes local SQLite `ctx_search`. Note: when `agentmemory.memoryTools` is active, unified `memory_search` automatically takes precedence and `ctx_search` is suppressed. |
-| `noteEnabled` | `true` | Exposes local SQLite `ctx_note` tool and note nudges. Set to `false` when using AgentMemory to avoid confusing local session notes with durable memories. |
-| `agentmemory.enabled` | `false` | Master switch for the AgentMemory REST bridge. Connects OMP to an external AgentMemory service. |
-| `agentmemory.url` | `http://127.0.0.1:3111` | REST service URL. Can be overridden via `AGENTMEMORY_URL` environment variable. |
-| `agentmemory.secret` | `""` | Bearer authentication secret. Can be overridden via `AGENTMEMORY_SECRET` environment variable. |
-| `agentmemory.project` | `""` | Explicit project namespace. If blank, automatically resolves to Git repo root or working directory. |
-| `agentmemory.agentId` | `""` | Optional caller identifier tag. Can be overridden via `AGENT_ID` environment variable. |
-| `agentmemory.capture` | `true` | Automatically captures session start/end, tool outputs, and assistant messages to AgentMemory for background observation and indexing. |
-| `agentmemory.inject` | `true` | Automatically recalls relevant long-term memories and injects them as a cache-stable Context Projection block after the triggering user message. Disable for tool-first recall only. |
-| `agentmemory.historianRetrieval` | `true` | Allows the background Historian compaction process to query AgentMemory for project context to enrich session summaries. |
-| `agentmemory.memoryTools` | `true` | Exposes `memory_search` (federated search across local session history and remote durable memory) and `memory_save` (durable write outbox) to the agent. |
-| `agentmemory.requireHttps` | `false` | Security policy: fails closed if bearer secret targets non-loopback plaintext HTTP. Default `false` allows Tailscale/LAN HTTP. |
+| `enabled` | `false` | Master switch for Magic Context session window management, continuous turn compaction, and context reduction. |
+| `historianEnabled` | `true` | Enables background session compaction (Historian) to summarize older turns into `<session-history>`. |
+| `historianModel` | `""` | Model identifier for background Historian compaction, for example `gm/gemini-3.8-flash` or `lmxu/gpt-5.6-sol`. Empty keeps Historian inactive. |
+| `historianThinkingLevel` | `""` | Reasoning effort level for the Historian compaction model: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Empty uses the model default. |
+| `searchEnabled` | `true` | Registers the `ctx_search` tool for session-history retrieval. Superseded by `memory_search` when AgentMemory tools are active. |
+| `noteEnabled` | `true` | Registers the `ctx_note` tool for session-scoped notes and nudges. |
+| `agentmemory.enabled` | `false` | Enables the bridge to an external AgentMemory service for cross-session durable memory and recall. |
+| `agentmemory.url` | `http://127.0.0.1:3111` | AgentMemory service REST endpoint URL. `AGENTMEMORY_URL` environment variable overrides this. |
+| `agentmemory.secret` | `""` | Bearer token secret for authenticating with the AgentMemory service. `AGENTMEMORY_SECRET` overrides this. |
+| `agentmemory.project` | `""` | Project namespace for scoping memories in AgentMemory. Defaults to the Git repository root or working directory. |
+| `agentmemory.agentId` | `""` | Agent identifier tag passed to AgentMemory. `AGENT_ID` environment variable overrides this. |
+| `agentmemory.capture` | `true` | Captures session lifecycle events, tool outputs, and assistant observations to AgentMemory for background indexing. |
+| `agentmemory.inject` | `true` | Admits automatic memory recall as a cache-stable Context Projection block following each user turn. |
+| `agentmemory.historianRetrieval` | `true` | Allows the background Historian compaction process to query AgentMemory for project context. |
+| `agentmemory.memoryTools` | `true` | Exposes AgentMemory tools to the agent: `memory_search` (federated search) and `memory_save` (durable memory write). |
+| `agentmemory.requireHttps` | `false` | Enforces HTTPS when sending bearer authentication to non-loopback hosts. Default false permits private networks such as Tailscale. |
