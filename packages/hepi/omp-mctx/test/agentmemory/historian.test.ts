@@ -92,4 +92,24 @@ describe("agentmemory historian bridge", () => {
 		expect(mapParserCategory("CONFIG_VALUES")).toBe("fact");
 		expect(mapParserCategory("NAMING")).toBe("preference");
 	});
+
+	it("blocks memory-search tool evidence while admitting independent user evidence from another host", () => {
+		expect(
+			admitHistorianCandidate({
+				content: "recalled fact",
+				type: "fact",
+				evidence: [{ kind: "tool", toolName: "memory_search", content: "recalled fact", hostEntryId: "recall" }],
+			}),
+		).toEqual({ accepted: false, reason: "tainted" });
+		const accepted = admitHistorianCandidate({
+			content: "user-confirmed fact",
+			type: "fact",
+			evidence: [
+				{ kind: "user", content: "recalled fact", hostEntryId: "recall", tainted: true },
+				{ kind: "user", content: "user-confirmed fact", hostEntryId: "user-entry" },
+			],
+		});
+		expect(accepted.accepted).toBe(true);
+		if (accepted.accepted) expect(accepted.candidate.sourceRefs.map(source => source.hostEntryId)).toEqual(["user-entry"]);
+	});
 });

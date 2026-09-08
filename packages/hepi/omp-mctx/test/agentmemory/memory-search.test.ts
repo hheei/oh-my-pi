@@ -82,11 +82,11 @@ describe("memory search scope and renderer", () => {
 		).toBe(false);
 	});
 
-	it("renders labelled groups and partial details", async () => {
+	it("renders labelled groups, partial details, and source identities", async () => {
 		const tool = createMemorySearchTool({
 			search: async () => ({
 				local: [{ id: "l", content: "local" }],
-				remote: [{ id: "r", content: "remote", kind: "memory" }],
+				remote: [{ id: "r", content: "remote", kind: "memory", project: "repo", sessionId: "s", agentId: "a" }],
 				partial: ["remote timeout"],
 			}),
 		});
@@ -101,5 +101,19 @@ describe("memory search scope and renderer", () => {
 		expect(text).toContain("Current session");
 		expect(text).toContain("Durable memory (agentmemory)");
 		expect(text).toContain("Partial results");
+		expect(result.details).toEqual({
+			local: [{ id: "l" }],
+			remote: [
+				{
+					id: "r",
+					kind: "memory",
+					project: "repo",
+					sessionId: "s",
+					agentId: "a",
+					contentDigest: "b71199ebd070b36beab7317920c2c2f1d777df8d05e5527d8458fda57cb17a7a",
+				},
+			],
+			partial: ["remote timeout"],
+		});
 	});
 });

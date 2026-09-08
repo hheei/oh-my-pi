@@ -19,6 +19,18 @@ export interface AgentMemoryBridgeSettings {
 	requireHttps: boolean;
 }
 
+export type AgentMemoryRecallStatus = "DISABLED" | "UNAVAILABLE" | "ENABLED";
+
+/** Keep startup diagnostics aligned with the tools actually exposed to the agent. */
+export function formatAutomaticRecallStatus(
+	settings: Pick<AgentMemoryBridgeSettings, "memoryTools">,
+	status: AgentMemoryRecallStatus,
+	detail: string,
+): string {
+	const guidance = settings.memoryTools ? "use memory_search" : "memory tools disabled";
+	return `agentmemory automatic recall: ${status} (${detail}; ${guidance})`;
+}
+
 export interface AgentMemorySettingsEnvironment {
 	AGENTMEMORY_URL?: string;
 	AGENTMEMORY_SECRET?: string;

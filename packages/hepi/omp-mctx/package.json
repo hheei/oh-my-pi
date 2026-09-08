@@ -20,7 +20,7 @@
 	},
 	"scripts": {
 		"check": "tsgo -p tsconfig.json --noEmit",
-		"test": "bun test src/host src/agentmemory test/agentmemory src/agentmemory-foundation.test.ts src/core/shared/data-path.ts src/core/features/fresh-schema.test.ts src/core/features/fail-closed-block.test.ts src/core/features/memory/embedding-local.test.ts src/core/features/memory/embedding-openai-failure.test.ts src/core/hooks/empty-task-output.test.ts src/core/hooks/temporal-awareness.test.ts src/core/hooks/strip-content.test.ts src/core/hooks/format-embed-failure.test.ts src/core/agents/magic-context-prompt.test.ts src/commands/ctx-embed-partial.test.ts src/config/config.test.ts src/core/hooks/lkg-persist.test.ts src/core/hooks/raw-fallback-context-limit.test.ts src/lkg-pi.test.ts"
+		"test": "bun test src/host src/agentmemory test/agentmemory src/agentmemory-foundation.test.ts src/core/shared/data-path.ts src/core/features/fresh-schema.test.ts src/core/features/context-projection.test.ts src/core/features/context-projection-coordinator.test.ts src/core/features/fail-closed-block.test.ts src/core/features/memory/embedding-local.test.ts src/core/features/memory/embedding-openai-failure.test.ts src/core/hooks/empty-task-output.test.ts src/core/hooks/temporal-awareness.test.ts src/core/hooks/strip-content.test.ts src/core/hooks/format-embed-failure.test.ts src/core/agents/magic-context-prompt.test.ts src/commands/ctx-embed-partial.test.ts src/config/config.test.ts src/core/hooks/lkg-persist.test.ts src/core/hooks/raw-fallback-context-limit.test.ts src/lkg-pi.test.ts"
 	},
 	"omp": {
 		"extensions": [
@@ -80,7 +80,7 @@
 			"agentmemory.inject": {
 				"type": "boolean",
 				"default": true,
-				"description": "Enable automatic prompt-specific durable-memory recall."
+				"description": "Admit automatic recall as a cache-stable Context Projection event after the triggering user entry. Disable for tool-first memory_search only."
 			},
 			"agentmemory.historianRetrieval": {
 				"type": "boolean",
@@ -119,6 +119,7 @@
 		"!src/handoff",
 		"!src/handoff/**",
 		"README.md",
+		"docs",
 		"LICENSE"
 	],
 	"publishConfig": {

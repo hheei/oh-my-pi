@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	AgentMemoryClient,
 	AgentMemoryClientError,
-	} from "../src/agentmemory/client";
-import { resolveAgentMemorySettings } from "../src/agentmemory/config";
+} from "../src/agentmemory/client";
+import { formatAutomaticRecallStatus, resolveAgentMemorySettings } from "../src/agentmemory/config";
 import { isExcludedMemoryTool, redactCaptureText, redactCaptureValue } from "../src/agentmemory/capture";
 import { AgentMemorySessionManager } from "../src/agentmemory/session";
 
@@ -17,6 +17,21 @@ describe("mctx agentmemory bridge foundation", () => {
 		expect(settings).toMatchObject({ enabled: false, url: "https://environment", secret: "environment" });
 		expect(settings.capture).toBe(true);
 		expect(settings.inject).toBe(true);
+	});
+
+	it("honors agentmemory.inject as the automatic recall switch", () => {
+		expect(resolveAgentMemorySettings({ agentmemory: { inject: true } }).inject).toBe(true);
+		expect(resolveAgentMemorySettings({ agentmemory: { inject: false } }).inject).toBe(false);
+		expect(resolveAgentMemorySettings({}).inject).toBe(true);
+	});
+
+	it("does not advertise an unavailable memory search tool", () => {
+		expect(formatAutomaticRecallStatus({ memoryTools: false }, "DISABLED", "inject off")).not.toContain(
+			"memory_search",
+		);
+		expect(formatAutomaticRecallStatus({ memoryTools: true }, "ENABLED", "context projection admission")).toContain(
+			"memory_search",
+		);
 	});
 
 	it("rejects a healthy HTTP response whose JSON body is not healthy", async () => {

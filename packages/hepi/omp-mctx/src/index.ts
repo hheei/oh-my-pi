@@ -65,7 +65,7 @@ import {
 	primeAgentMemorySettings,
 	registerAgentMemoryBridge,
 	resolveAgentMemorySettings,
-	createAgentMemoryInjectHandler,
+	formatAutomaticRecallStatus,
 	SqliteTurnTaintStore,
 	type AgentMemoryBridgeRuntime,
 	enqueueAgentMemorySave,
@@ -709,31 +709,17 @@ async function startPiMagicContextRuntime(
 			const drainTimer = setInterval(drain, 30_000);
 			drainTimer.unref?.();
 			pi.on("session_shutdown", () => clearInterval(drainTimer));
-			if (agentMemorySettings.inject) {
-				const injectHandler = createAgentMemoryInjectHandler({
-					client: agentMemoryRuntime.client,
-					project: agentMemoryRuntime.identity(projectDir).agentmemoryProject,
-					...(agentMemorySettings.agentId ? { agentId: agentMemorySettings.agentId } : {}),
-					store: new SqliteTurnTaintStore(db, "agentmemory"),
-					turnId: () => "",
-					activeRemoteSessionId: ctx => {
-						const binding = agentMemoryRuntime!.sessions.getBinding(ctx.sessionManager?.getSessionId?.() ?? "");
-						return binding?.agentmemorySessionId;
-					},
-					scope: ctx => {
-						const identity = agentMemoryRuntime!.identity(ctx.cwd ?? projectDir);
-						return {
-							project: identity.agentmemoryProject,
-							...(identity.agentId ? { agentId: identity.agentId } : {}),
-						};
-					},
-				});
-				pi.on("before_agent_start", injectHandler);
-			}
 			info(
 				agentMemorySettings.capture
 					? "registered agentmemory bridge capture"
 					: "registered agentmemory bridge (capture disabled)",
+			);
+			info(
+				formatAutomaticRecallStatus(
+					agentMemorySettings,
+					agentMemorySettings.inject ? "ENABLED" : "DISABLED",
+					agentMemorySettings.inject ? "context projection admission" : "agentmemory.inject=false",
+				),
 			);
 		} catch (error) {
 			// A malformed URL or HTTPS policy must not disable the Window.
@@ -742,9 +728,11 @@ async function startPiMagicContextRuntime(
 					error instanceof Error ? error.message : String(error)
 				}`,
 			);
+			info(formatAutomaticRecallStatus(agentMemorySettings, "UNAVAILABLE", "bridge startup failed"));
 		}
 	} else {
 		info("agentmemory bridge: DISABLED");
+		info(formatAutomaticRecallStatus(agentMemorySettings, "UNAVAILABLE", "bridge disabled"));
 	}
 
 	if (config.memory.enabled) {
@@ -772,6 +760,7 @@ async function startPiMagicContextRuntime(
 	// every invocation reads the active cwd's config instead of the launch cwd's.
 	const projectDepsByDir = new Map<string, ResolvedPiProjectDeps>();
 
+	const agentMemoryTaintStore = agentMemoryRuntime ? new SqliteTurnTaintStore(database, "agentmemory") : undefined;
 	const buildContextOptions = (
 		cfg: MagicContextConfig,
 		hist: PiHistorianOptions | undefined,
@@ -807,6 +796,21 @@ async function startPiMagicContextRuntime(
 		resolveForProject: resolveContextOptionsForProject,
 		compactionOff,
 		allowHomeProject: cfg.allow_home_project,
+		automaticRecallAdmission: Boolean(agentMemoryRuntime && agentMemorySettings.inject),
+		...(agentMemoryRuntime
+			? {
+					agentMemory: {
+						enabled: true,
+						historianRetrieval: agentMemorySettings.historianRetrieval,
+						project: agentMemorySettings.project,
+						...(agentMemorySettings.agentId ? { agentId: agentMemorySettings.agentId } : {}),
+						activeSessionId: (ompSessionId: string) =>
+							agentMemoryRuntime!.sessions.getBinding(ompSessionId)?.agentmemorySessionId,
+						client: agentMemoryRuntime.client,
+					},
+					...(agentMemoryTaintStore ? { agentMemoryTaint: agentMemoryTaintStore } : {}),
+				}
+			: {}),
 	});
 
 	function buildProjectDeps(dir: string, identity: string, cfg: MagicContextConfig): ResolvedPiProjectDeps {
@@ -827,7 +831,7 @@ async function startPiMagicContextRuntime(
 										agentMemoryRuntime!.sessions.getBinding(ompSessionId)?.agentmemorySessionId,
 									client: agentMemoryRuntime.client,
 								},
-								agentMemoryTaint: new SqliteTurnTaintStore(database, "agentmemory"),
+								...(agentMemoryTaintStore ? { agentMemoryTaint: agentMemoryTaintStore } : {}),
 							}
 						: {}),
 				}

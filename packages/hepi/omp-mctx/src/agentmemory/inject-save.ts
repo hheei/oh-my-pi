@@ -2,17 +2,10 @@ import * as crypto from "node:crypto";
 import type { ExtensionAPI, ToolDefinition } from "@oh-my-pi/pi-coding-agent";
 import { Type, type Static } from "@oh-my-pi/omptype/typebox";
 import { replaceTabs, truncateToWidth } from "@oh-my-pi/pi-tui";
-import { prompt } from "@oh-my-pi/pi-utils";
 import { PREVIEW_LIMITS, shortenPath, TRUNCATE_LENGTHS } from "@oh-my-pi/pi-coding-agent/tools/render-utils";
-import {
-	decodeAgentMemorySearchResults,
-	type AgentMemoryClientPort,
-	type RememberInput,
-	type RememberResult,
-} from "./client.ts";
+import { type AgentMemoryClientPort, type RememberInput, type RememberResult } from "./client.ts";
 import { Database, type Database as DatabaseType } from "../core/shared/sqlite";
 import { ensureAgentMemoryOutboxSchema } from "./outbox";
-import injectPrompt from "./inject-prompt.md" with { type: "text" };
 
 function safeToolMessage(value: string): string {
 	return truncateToWidth(replaceTabs(shortenPath(value)), PREVIEW_LIMITS.OUTPUT_EXPANDED * TRUNCATE_LENGTHS.LONG);
@@ -94,26 +87,9 @@ export function fingerprintRecall(content: string): string {
 	return crypto.createHash("sha256").update(content.trim()).digest("hex");
 }
 
-export function isSubstantivePrompt(prompt: string): boolean {
-	const text = prompt.trim();
-	return text.length >= 8 && !/^\/(help|quit|exit|clear|reload|ctx-status)\b/i.test(text);
-}
-
-export type AgentMemoryRecall = { content: string; id?: string };
-
 type BranchContext = {
 	sessionManager?: { getSessionId?: () => string | undefined; getBranch?: () => readonly unknown[] };
 };
-
-export function resolveLatestUserEntryId(ctx: BranchContext): string | undefined {
-	const branch = ctx.sessionManager?.getBranch?.() ?? [];
-	for (let index = branch.length - 1; index >= 0; index -= 1) {
-		const entry = branch[index] as Record<string, unknown>;
-		const message = (entry.message ?? entry) as Record<string, unknown>;
-		if (message.role === "user" && typeof entry.id === "string" && entry.id.trim()) return entry.id.trim();
-	}
-	return undefined;
-}
 
 function branchFingerprint(ctx: BranchContext): string {
 	const branch = ctx.sessionManager?.getBranch?.() ?? [];
@@ -124,130 +100,6 @@ function branchFingerprint(ctx: BranchContext): string {
 export function resolvePendingTurnId(ctx: BranchContext, promptText: string): string {
 	const sessionId = ctx.sessionManager?.getSessionId?.() ?? "unknown-session";
 	return `turn-${fingerprintRecall(`${sessionId}\n${branchFingerprint(ctx)}\n${promptText.trim()}`).slice(0, 24)}`;
-}
-
-export type AgentMemoryInjectOptions = {
-	client: AgentMemoryClientPort;
-	project: string;
-	agentId?: string;
-	store: TurnTaintStore;
-	turnId: (event: { prompt: string }, ctx: BranchContext) => string;
-	activeRemoteSessionId?: (ctx: {
-		sessionManager?: { getSessionId?: () => string | undefined };
-	}) => string | undefined;
-	limit?: number;
-	/** Scope is resolved at the event site so session switches cannot reuse boot identity. */
-	scope?: (ctx: { cwd?: string }) => { project: string; agentId?: string };
-};
-
-export function formatRecall(recall: AgentMemoryRecall[]): string {
-	return recall
-		.map(item => `- ${item.content.trim()}`)
-		.filter(line => line !== "-")
-		.join("\n");
-}
-
-export function createAgentMemoryInjectHandler(options: AgentMemoryInjectOptions) {
-	return async (event: { prompt: string }, ctx: BranchContext & { cwd?: string }) => {
-		const resolvedScope = options.scope?.(ctx) ?? {
-			project: options.project,
-			...(options.agentId ? { agentId: options.agentId } : {}),
-		};
-		if (!isSubstantivePrompt(event.prompt) || !resolvedScope.project) return undefined;
-		const suppliedTurnId = options.turnId(event, ctx);
-		const turnId = suppliedTurnId || resolvePendingTurnId(ctx, event.prompt);
-		try {
-			const response = await options.client.search({
-				query: event.prompt.trim(),
-				project: resolvedScope.project,
-				...(resolvedScope.agentId ? { agentId: resolvedScope.agentId } : {}),
-				limit: options.limit ?? 4,
-			});
-			const entries = decodeAgentMemorySearchResults(response);
-			const observationSessions = new Map<string, { project?: string; agentId?: string }>();
-			if (
-				entries.some(entry => entry.kind === "observation" && !entry.project && entry.sessionId) &&
-				typeof options.client.listSessions === "function"
-			) {
-				for (const session of await options.client.listSessions()) {
-					const id = session.id ?? session.sessionId;
-					if (id) observationSessions.set(id, session);
-				}
-			}
-			const recalled = await Promise.all(
-				entries.map(async (entry): Promise<AgentMemoryRecall[]> => {
-					const session = entry.sessionId ? observationSessions.get(entry.sessionId) : undefined;
-					let value = { ...entry, ...session } as Record<string, unknown>;
-					if (
-						entry.kind !== "observation" &&
-						(typeof value.project !== "string" ||
-							(resolvedScope.agentId !== undefined &&
-								typeof value.agentId !== "string" &&
-								typeof value.agent_id !== "string")) &&
-						typeof value.id === "string" &&
-						options.client.getMemory
-					) {
-						try {
-							const hydrated = await options.client.getMemory(value.id);
-							if (hydrated) value = { ...value, ...hydrated };
-						} catch {
-							return [];
-						}
-					}
-					const entryProject =
-						typeof value.project === "string"
-							? value.project.trim()
-							: typeof value.projectName === "string"
-								? value.projectName.trim()
-								: "";
-					const entryAgent =
-						typeof value.agentId === "string"
-							? value.agentId.trim()
-							: typeof value.agent_id === "string"
-								? value.agent_id.trim()
-								: "";
-					const entrySession =
-						typeof value.sessionId === "string"
-							? value.sessionId.trim()
-							: typeof value.session_id === "string"
-								? value.session_id.trim()
-								: "";
-					// Injection is fail-closed. Unscoped records are not model-visible;
-					// the unified search path performs explicit hydration when possible.
-					if (
-						entryProject !== resolvedScope.project ||
-						(resolvedScope.agentId !== undefined && entryAgent !== resolvedScope.agentId) ||
-						(options.activeRemoteSessionId?.(ctx) !== undefined &&
-							entrySession === options.activeRemoteSessionId?.(ctx))
-					)
-						return [];
-					const content =
-						typeof value.content === "string"
-							? value.content.trim()
-							: typeof value.text === "string"
-								? value.text.trim()
-								: "";
-					return content ? [{ content, ...(typeof value.id === "string" ? { id: value.id } : {}) }] : [];
-				}),
-			);
-			const recall = recalled.flat();
-			const content = formatRecall(recall);
-			if (!content) return undefined;
-			const fingerprint = fingerprintRecall(content);
-			if (options.store.get(turnId)?.fingerprint === fingerprint) return undefined;
-			markTurnTainted(options.store, turnId, content);
-			return {
-				ephemeralMessage: {
-					customType: "agentmemory-recall",
-					content: prompt.render(injectPrompt, { recall: content }),
-					display: false as const,
-					attribution: "agent" as const,
-				},
-			};
-		} catch {
-			return undefined;
-		}
-	};
 }
 
 const SaveParams = Type.Object({

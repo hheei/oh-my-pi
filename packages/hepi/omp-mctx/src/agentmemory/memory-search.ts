@@ -1,3 +1,4 @@
+import * as crypto from "node:crypto";
 import type { ToolDefinition } from "@oh-my-pi/pi-coding-agent";
 import { Type, type Static } from "@oh-my-pi/omptype/typebox";
 import { replaceTabs, truncateToWidth } from "@oh-my-pi/pi-tui";
@@ -33,6 +34,10 @@ const TOOL_PREVIEW_WIDTH = PREVIEW_LIMITS.OUTPUT_EXPANDED * TRUNCATE_LENGTHS.LON
 
 function sanitizeToolText(value: string): string {
 	return truncateToWidth(replaceTabs(shortenPath(value)), TOOL_PREVIEW_WIDTH);
+}
+
+function contentDigest(content: string): string {
+	return crypto.createHash("sha256").update(new TextEncoder().encode(content)).digest("hex");
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -260,7 +265,18 @@ export function createMemorySearchTool(deps: MemorySearchToolDeps): ToolDefiniti
 				sections.push(`Partial results\n${result.partial.map(sanitizeToolText).join("\n")}`);
 			return {
 				content: [{ type: "text", text: sections.join("\n\n") }],
-				details: { local: result.local.length, remote: result.remote.length, partial: result.partial },
+				details: {
+					local: result.local.map(item => ({ id: item.id })),
+					remote: result.remote.map(item => ({
+						id: item.id,
+						kind: item.kind,
+						project: item.project!,
+						...(item.sessionId === undefined ? {} : { sessionId: item.sessionId }),
+						...(item.agentId === undefined ? {} : { agentId: item.agentId }),
+						contentDigest: contentDigest(item.content),
+					})),
+					partial: result.partial,
+				},
 			};
 		},
 	};

@@ -4,9 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Database } from "../../src/core/shared/sqlite";
 import {
-	createAgentMemoryInjectHandler,
 	createMemorySaveTool,
-	JsonTurnTaintStore,
 	markTurnTainted,
 	reconcileTurnTaintHostEntry,
 	SqliteTurnTaintStore,
@@ -18,37 +16,7 @@ afterEach(() => {
 	for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-describe("agentmemory inject and save", () => {
-	it("returns a hidden turn-local injection and suppresses an identical retry after restart", async () => {
-		const dir = mkdtempSync(path.join(os.tmpdir(), "mctx-taint-"));
-		dirs.push(dir);
-		const file = path.join(dir, "taint.json");
-		const client = {
-			search: async () => ({
-				results: [{ observation: { id: "o1", project: "repo", narrative: "Use the stable API" } }],
-			}),
-		} as never;
-		const context = { sessionManager: { getSessionId: () => "turn-1" } };
-		const first = await createAgentMemoryInjectHandler({
-			client,
-			project: "repo",
-			store: new JsonTurnTaintStore(file),
-			turnId: ctx => ctx.sessionManager?.getSessionId?.() ?? "",
-		})({ prompt: "How should this API be used?" }, context);
-		expect(first?.ephemeralMessage).toMatchObject({
-			customType: "agentmemory-recall",
-			content: expect.stringContaining("Use the stable API"),
-			display: false,
-		});
-		const second = await createAgentMemoryInjectHandler({
-			client,
-			project: "repo",
-			store: new JsonTurnTaintStore(file),
-			turnId: ctx => ctx.sessionManager?.getSessionId?.() ?? "",
-		})({ prompt: "How should this API be used?" }, context);
-		expect(second).toBeUndefined();
-	});
-
+describe("agentmemory save and provenance", () => {
 	it("reports saved only for a validated remember response and queues failed delivery", async () => {
 		const queued: unknown[] = [];
 		const tool = createMemorySaveTool({

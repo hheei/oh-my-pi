@@ -26,6 +26,13 @@
 import * as crypto from "node:crypto";
 import type { ContextEvent, ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import type { AgentMemoryClientPort } from "./agentmemory/client";
+import type { TurnTaintStore } from "./agentmemory/inject-save";
+import {
+	admitAutomaticRecall,
+	applyAdmittedRecallToMessages,
+	findLatestUserMessage,
+} from "./agentmemory/recall-admission";
+import { presentAdmittedRecall } from "./agentmemory/recall-presentation";
 import {
 	acquireCompartmentLease,
 	COMPARTMENT_LEASE_RENEWAL_MS,
@@ -94,6 +101,10 @@ import {
 	schedulePiTransformDecisionResolve,
 } from "#core/features/transform-decision-log";
 import { computePiWorkMetrics } from "#core/features/work-metrics";
+import {
+	notePendingProjectionTransition,
+	tryPublishContextProjection,
+} from "#core/features/context-projection-coordinator";
 import {
 	applyFlushedStatuses,
 	applyPendingOperations,
@@ -534,6 +545,7 @@ function convertLocatedPiUserEntry(
  */
 export function signalPiHistoryRefresh(sessionId: string): void {
 	historyRefreshSessions.add(sessionId);
+	notePendingProjectionTransition(sessionId, "history_refresh", "history");
 }
 
 /**
@@ -543,6 +555,7 @@ export function signalPiHistoryRefresh(sessionId: string): void {
  */
 export function signalPiSystemPromptRefresh(sessionId: string): void {
 	systemPromptRefreshSessions.add(sessionId);
+	notePendingProjectionTransition(sessionId, "system_refresh", "system");
 }
 
 /**
@@ -551,6 +564,7 @@ export function signalPiSystemPromptRefresh(sessionId: string): void {
  */
 export function signalPiPendingMaterialization(sessionId: string): void {
 	pendingMaterializationSessions.add(sessionId);
+	notePendingProjectionTransition(sessionId, "materialization", "history");
 }
 
 export function clearPiM0Cache(db: ContextDatabase, sessionId: string, reason: string): void {
@@ -650,6 +664,7 @@ export function signalPiSystemPromptRefreshForProject(projectIdentity: string): 
 	if (!sessions) return;
 	for (const sessionId of sessions) {
 		systemPromptRefreshSessions.add(sessionId);
+		notePendingProjectionTransition(sessionId, "system_refresh", "system");
 	}
 }
 
@@ -780,7 +795,7 @@ export interface PiHistorianOptions {
 				client: AgentMemoryClientPort;
 		  }
 		| undefined;
-	agentMemoryTaint?: { isHostEntryTainted?: (hostEntryId: string) => boolean };
+	agentMemoryTaint?: TurnTaintStore;
 	/**
 	 * Execute-threshold percentage used by the trigger logic to compute
 	 * pressure-driven trigger points. Mirrors legacy host's
@@ -897,6 +912,11 @@ export interface PiContextHandlerOptions {
 	 * async after each tagging pass.
 	 */
 	historian?: PiHistorianOptions | undefined;
+	/** Enables automatic agentmemory recall admission during user-turn transforms. */
+	automaticRecallAdmission?: boolean | undefined;
+	/** Direct agentmemory client for automatic recall when Historian is off. */
+	agentMemory?: PiHistorianOptions["agentMemory"];
+	agentMemoryTaint?: TurnTaintStore;
 	/**
 	 * Optional auto-search hint wiring. When omitted or disabled, no hint
 	 * computation runs. Search uses omp-mctx's own SQLite store.
@@ -2789,6 +2809,129 @@ export function registerPiContextHandler(pi: ExtensionAPI, baseOptions: PiContex
 						setImmediate(() => saveLkgSlotToDb(options.db, sessionId, capturedSlot));
 					}
 				}
+			}
+			const agentMemory = options.agentMemory ?? options.historian?.agentMemory;
+			if (!options.compactionOff && options.automaticRecallAdmission && agentMemory?.enabled && agentMemory.client) {
+				try {
+					const recallProjectionMessages = outputMessages.map((message, index) => {
+						const piMessage = message as { id?: unknown; role?: unknown; content?: unknown };
+						return {
+							id:
+								typeof piMessage.id === "string"
+									? piMessage.id
+									: (resolvePiStableId(message, index, undefined, result.postCommitEntryIdByRef) ??
+										`pi-msg-${index}`),
+							role: typeof piMessage.role === "string" ? piMessage.role : undefined,
+							content: piMessage.content,
+						};
+					});
+					const latestUser = findLatestUserMessage(recallProjectionMessages);
+					const lastSubstantive = [...recallProjectionMessages]
+						.reverse()
+						.find(
+							message =>
+								message.role === "user" ||
+								message.role === "assistant" ||
+								message.role === "toolResult" ||
+								message.role === "tool",
+						);
+					if (latestUser && lastSubstantive?.id === latestUser.id) {
+						const admission = await admitAutomaticRecall({
+							db: options.db,
+							sessionId,
+							messages: recallProjectionMessages,
+							userEntryAnchor: latestUser.id,
+							query: latestUser.text,
+							scope: {
+								project: agentMemory.project,
+								agentId: agentMemory.agentId,
+								activeSessionId: agentMemory.activeSessionId?.(sessionId),
+							},
+							client: agentMemory.client,
+							taint: options.agentMemoryTaint,
+						});
+						if ((admission.status === "admitted" || admission.status === "reused") && admission.event) {
+							const replayedProjectionMessages = applyAdmittedRecallToMessages(
+								recallProjectionMessages,
+								admission.event,
+							);
+							if (replayedProjectionMessages.length !== recallProjectionMessages.length) {
+								const triggeringMessage = outputMessages[latestUser.index];
+								if (triggeringMessage) {
+									const body = new TextDecoder().decode(admission.event.body);
+									const content = recallProjectionMessages[latestUser.index]?.content;
+									const recalledMessage = {
+										...triggeringMessage,
+										id: admission.event.eventId,
+										content: typeof content === "string" ? body : [{ type: "text", text: body }],
+									} as unknown as PiAgentMessage;
+									outputMessages = [
+										...outputMessages.slice(0, latestUser.index + 1),
+										recalledMessage,
+										...outputMessages.slice(latestUser.index + 1),
+									];
+									presentAdmittedRecall({
+										db: options.db,
+										ui: ctx.ui,
+										hasUI: ctx.hasUI,
+										event: admission.event,
+										presenterToken: sessionId,
+									});
+								}
+							}
+						}
+					}
+				} catch (err) {
+					sessionLog(
+						sessionId,
+						`automatic recall admission failed: ${err instanceof Error ? err.message : String(err)}`,
+					);
+				}
+			}
+
+			if (!options.compactionOff) {
+				const projectionMessages = outputMessages.map((message, index) => {
+					const piMessage = message as {
+						id?: unknown;
+						role?: unknown;
+						content?: unknown;
+					};
+					return {
+						id:
+							typeof piMessage.id === "string"
+								? piMessage.id
+								: (resolvePiStableId(message, index, undefined, result.postCommitEntryIdByRef) ??
+									`pi-msg-${index}`),
+						role: typeof piMessage.role === "string" ? piMessage.role : undefined,
+						content: piMessage.content,
+					};
+				});
+				const contextWithTools = ctx as object & {
+					tools?: readonly { name?: unknown }[];
+				};
+				const toolsDigest =
+					contextWithTools.tools
+						?.map(tool => (typeof tool.name === "string" ? tool.name : ""))
+						.filter(Boolean)
+						.sort()
+						.join(",") || "none";
+				const contextModel = ctx.model;
+				const modelDigest =
+					modelKey ||
+					[contextModel?.provider, contextModel?.id]
+						.filter((value): value is string => typeof value === "string" && value.length > 0)
+						.join("/") ||
+					"unknown";
+				tryPublishContextProjection(options.db, {
+					sessionId,
+					messages: projectionMessages,
+					contract: {
+						modelDigest,
+						systemDigest:
+							typeof sessionMeta.systemPromptHash === "string" ? sessionMeta.systemPromptHash : "unknown",
+						toolsDigest,
+					},
+				});
 			}
 			return { messages: outputMessages } as {
 				messages: typeof event.messages;

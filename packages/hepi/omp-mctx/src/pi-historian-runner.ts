@@ -1155,7 +1155,7 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 								for (let index = sourceIndex - 1; index >= 0; index -= 1) {
 									const ancestor = chunk.lines[index];
 									if (ancestor?.role !== "user") continue;
-									tainted = agentMemoryTaint?.isHostEntryTainted?.(ancestor.messageId) === true;
+									if (agentMemoryTaint?.isHostEntryTainted?.(ancestor.messageId) === true) continue;
 									break;
 								}
 							}
@@ -1169,6 +1169,9 @@ export async function runPiHistorian(deps: PiHistorianDeps): Promise<void> {
 										content: source.sourceText ?? fact.content,
 										hostEntryId: source.messageId,
 										...(source.toolCallId ? { toolCallId: source.toolCallId } : {}),
+										...("toolName" in source && typeof source.toolName === "string"
+											? { toolName: source.toolName }
+											: {}),
 										harnessId: "omp",
 										contentFingerprint: contentFingerprint(source.sourceText ?? fact.content),
 										tainted,

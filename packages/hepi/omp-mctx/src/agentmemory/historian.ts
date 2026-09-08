@@ -11,6 +11,7 @@ export type HistorianEvidence = {
 	/** Stable host identity. Ordinals are deliberately not used as identity. */
 	hostEntryId?: string;
 	toolCallId?: string;
+	toolName?: string;
 	harnessId?: string;
 	contentFingerprint?: string;
 	ordinal?: number;
@@ -120,10 +121,19 @@ export function formatHistorianBackground(background: HistorianBackground): stri
 	});
 }
 
+function isRetrievalEvidence(evidence: HistorianEvidence): boolean {
+	return (
+		evidence.kind === "retrieval" ||
+		evidence.kind === "memory_save" ||
+		evidence.derivedFromRetrieval ||
+		(evidence.kind === "tool" && evidence.toolName === "memory_search")
+	);
+}
+
 function isIndependentEvidence(evidence: HistorianEvidence): boolean {
 	return (
 		(evidence.kind === "user" || evidence.kind === "tool") &&
-		!evidence.derivedFromRetrieval &&
+		!isRetrievalEvidence(evidence) &&
 		!evidence.tainted &&
 		evidence.content.trim().length > 0
 	);
@@ -138,9 +148,7 @@ export function admitHistorianCandidate(args: {
 }): CandidateAdmission {
 	const content = normalized(args.content);
 	if (!content) return { accepted: false, reason: "empty" };
-	const tainted = args.evidence.some(
-		item => item.tainted || item.derivedFromRetrieval || item.kind === "retrieval" || item.kind === "memory_save",
-	);
+	const tainted = args.evidence.some(item => item.tainted || isRetrievalEvidence(item));
 	const independent = args.evidence.filter(isIndependentEvidence);
 	if (independent.length === 0) return { accepted: false, reason: tainted ? "tainted" : "no-independent-evidence" };
 	const reconciled = reconcileHistorianProvenance(independent);
