@@ -1145,8 +1145,6 @@ export type { ToolResultEventResult } from "../shared-events";
 
 export interface BeforeAgentStartEventResult {
 	message?: CustomMessagePayload;
-	/** Hidden provider context for this turn. It is never appended to the session transcript. */
-	ephemeralMessage?: CustomMessagePayload;
 	/** Replace the system prompt for this turn. If multiple extensions return this, they are chained. */
 	systemPrompt?: string[];
 }

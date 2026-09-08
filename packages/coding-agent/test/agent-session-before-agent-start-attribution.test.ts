@@ -34,9 +34,9 @@ describe("AgentSession before_agent_start attribution fallback", () => {
 		authStorage = undefined;
 	});
 
-	function createSession(ephemeral = false) {
+	function createSession() {
 		const emitBeforeAgentStart = vi.fn().mockResolvedValue({
-			[ephemeral ? "ephemeralMessages" : "messages"]: [
+			messages: [
 				{
 					customType: "before-start",
 					content: injectedText,
@@ -161,24 +161,5 @@ describe("AgentSession before_agent_start attribution fallback", () => {
 		}
 		expect(llmInjected.attribution).toBe("agent");
 		expect(inferCopilotInitiator(llmMessages)).toBe("agent");
-	});
-
-	it("delivers ephemeral before_agent_start context for one turn without persisting it", async () => {
-		const { agent } = createSession(true);
-		const observed: AgentMessage[] = [];
-		const unsubscribe = agent.subscribe(event => {
-			if (event.type === "message_start") observed.push(event.message);
-		});
-
-		await session.prompt("hello with recall");
-		unsubscribe();
-
-		expect(findBeforeStartInjection(observed)).toBeDefined();
-		expect(findBeforeStartInjection(session.messages)).toBeUndefined();
-		expect(
-			session.sessionManager
-				.getBranch()
-				.some(entry => entry.type === "custom_message" && entry.customType === "before-start"),
-		).toBe(false);
 	});
 });

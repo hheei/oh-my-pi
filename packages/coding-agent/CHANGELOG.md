@@ -276,6 +276,8 @@
 - Fixed bracketed hashline edit targets being reported as undefined to extension path allowlists.
 - Fixed MCP tools discovered during startup disappearing after plan-mode approval or when leaving default-on plan mode.
 - Fixed ACP clients receiving invalid file locations or updates for released terminals, preventing invalid worktree scans and terminal errors on Windows.
+- Fixed user-scope marketplace plugins installed through `omp` losing their skills unless the Claude plugin source was separately enabled ([#10662](https://github.com/can1357/oh-my-pi/issues/10662)).
+- Restored mctx automatic AgentMemory recall as cache-stable Context Projection events after the triggering user entry, with `agentmemory.inject` as the public switch. The old ephemeral-prefix path stays removed.
 
 ## [18.1.6] - 2026-09-03
 
