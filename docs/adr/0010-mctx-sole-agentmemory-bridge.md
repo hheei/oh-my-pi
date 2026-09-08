@@ -19,3 +19,7 @@ host-side integration boundary without moving backend logic into OMP.
 This supersedes the runtime-owner wording in ADR-0003 and the final-owner
 sequencing in ADR-0009. Package removal is part of the agreed cutover scope;
 backend changes remain out of scope.
+
+Automatic recall is a Context Projection event stored in `context.db`, not a
+transient prefix on the provider request. `agentmemory.inject` is the public
+switch for that new path. Previously removed `ephemeralMessage` must not return.

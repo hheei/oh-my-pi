@@ -67,8 +67,31 @@ Posting session observations to agentmemory from `omp-mctx` lifecycle events (`s
 _Avoid_: hook, Integration hook, shell pre/post hooks
 
 **Inject**:
-Putting `omp-mctx`'s agentmemory recall into the model-bound request (`before_agent_start` system prompt). Only one Durable Memory Inject is allowed. Window transforms may still rewrite messages.
-_Avoid_: Integration hook, `<project-memory>`
+Automatically retrieving relevant agentmemory content and admitting it into the
+model-visible Window. An Inject is not a transient system-prompt rewrite: once
+admitted, its Recall Event remains causally replayable until a Projection Epoch
+changes. Only one Durable Memory Inject is allowed.
+_Avoid_: Integration hook, ephemeral message, `<project-memory>`
+
+**Recall Event**:
+An immutable, source-attributed record that selected Durable Memory content was
+actually presented to the model for a particular session branch. It is visible
+to the operator and cannot disappear while later output that depended on it
+remains in the same Projection Epoch.
+_Avoid_: cached search result, hidden prompt fragment, second Durable Memory
+
+**Context Projection**:
+The deterministic model-visible representation of a session Window. `omp-mctx`
+is its owner. It may contain selected Recall Events but is not a copy of the
+agentmemory knowledge base.
+_Avoid_: transcript as a synonym, provider cache, Durable Memory store
+
+**Projection Epoch**:
+A span in which previously presented Context Projection bytes remain fixed and
+new events are appended. Compaction, privacy withdrawal, branch replacement,
+or another explicit projection reset begins a new epoch and accepts the cache
+cost.
+_Avoid_: cache TTL, model turn, remote memory revision
 
 **Episodic**:
 What happened in sessions. Owned by the Window historian as compartments in `<session-history>`.
