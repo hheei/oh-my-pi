@@ -20,6 +20,7 @@ const SEARCH_ENABLED_FIELD = "searchEnabled";
 const NOTE_ENABLED_FIELD = "noteEnabled";
 const HISTORIAN_ENABLED_FIELD = "historianEnabled";
 const HISTORIAN_MODEL_FIELD = "historianModel";
+const HISTORIAN_THINKING_LEVEL_FIELD = "historianThinkingLevel";
 const HISTORIAN_TWO_PASS_FIELD = "historianTwoPass";
 const HISTORIAN_TIMEOUT_FIELD = "historianTimeoutMs";
 const HISTORY_BUDGET_FIELD = "historyBudgetPercentage";
@@ -156,6 +157,7 @@ export function resolvePiMctxSettings(state: SettingsState = {}): MagicContextCo
 	);
 	const historianModel = settingText(state, HISTORIAN_MODEL_FIELD);
 	const dreamerModel = settingText(state, DREAMER_MODEL_FIELD);
+	const historianThinkingLevel = settingText(state, HISTORIAN_THINKING_LEVEL_FIELD);
 	const sidekickModel = settingText(state, SIDEKICK_MODEL_FIELD);
 	const embedding = { provider: "off" as const };
 
@@ -197,6 +199,7 @@ export function resolvePiMctxSettings(state: SettingsState = {}): MagicContextCo
 			disable: !historianEnabled,
 			...(historianModel ? { model: historianModel } : {}),
 			two_pass: settingBoolean(state, HISTORIAN_TWO_PASS_FIELD, DEFAULT_CONFIG.historian?.two_pass ?? false),
+			...(historianThinkingLevel ? { thinking_level: historianThinkingLevel } : {}),
 		},
 		memory: {
 			...memory,
@@ -217,13 +220,13 @@ export function resolvePiMctxSettings(state: SettingsState = {}): MagicContextCo
 		embedding,
 		dreamer: dreamerEnabled
 			? {
-					...(dreamerModel ? { model: dreamerModel } : {}),
-					inject_docs: settingBoolean(
-						state,
-						DREAMER_INJECT_DOCS_FIELD,
-						DEFAULT_CONFIG.dreamer?.inject_docs ?? true,
-					),
-				}
+				...(dreamerModel ? { model: dreamerModel } : {}),
+				inject_docs: settingBoolean(
+					state,
+					DREAMER_INJECT_DOCS_FIELD,
+					DEFAULT_CONFIG.dreamer?.inject_docs ?? true,
+				),
+			}
 			: undefined,
 		...(sidekickModel ? { sidekick: { model: sidekickModel } } : {}),
 	});
@@ -388,5 +391,5 @@ export function createPiMctxSettingsProvider(): SettingsProvider {
 
 /** OMP uses plugin settings, not the Pi settings.json UI. */
 export function registerPiMctxSettings(_pi: ExtensionAPI): () => void {
-	return () => {};
+	return () => { };
 }

@@ -142,22 +142,21 @@ chains. A cache key cannot make different prefixes identical.
 
 All switches take effect at reload/restart (Pi registers tools once per process).
 
-| Setting                          | Default                 | Role                                                                                                      |
-| -------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------- |
-| `enabled`                        | `false`                 | Load the extension at all.                                                                                |
-| `searchEnabled`                  | `true`                  | `ctx_search`.                                                                                             |
-| `noteEnabled`                    | `true`                  | `ctx_note` and note nudges.                                                                               |
-| `historianEnabled`               | `true`                  | Historian compaction when a model is set.                                                                 |
-| `historianModel`                 | `""`                    | Provider/model ID for historian. Configure thinking level separately. Empty keeps it inactive.            |
-| `historianThinkingLevel`         | `""`                    | Optional Pi level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Empty uses Pi's default. |
-| `agentmemory.enabled`            | `false`                 | Opt in to the REST bridge.                                                                                |
-| `agentmemory.url`                | `http://127.0.0.1:3111` | Backend URL. `AGENTMEMORY_URL` overrides.                                                                 |
-| `agentmemory.project`            | `""`                    | Explicit project; git root / cwd otherwise.                                                               |
-| `agentmemory.agentId`            | `""`                    | Optional agent tag. `AGENT_ID` overrides.                                                                 |
-| `agentmemory.capture`            | `true`                  | Lifecycle observations.                                                                                   |
-| `agentmemory.inject`             | `true`                  | Automatic Context Projection recall.                                                                      |
-| `agentmemory.historianRetrieval` | `true`                  | Historian may query agentmemory.                                                                          |
-| `agentmemory.memoryTools`        | `true`                  | `memory_search` / `memory_save`.                                                                          |
-| `agentmemory.requireHttps`       | `false`                 | Fail closed if a secret is sent over non-loopback HTTP.                                                   |
-
-`AGENTMEMORY_SECRET` supplies the bearer token when required.
+| Setting | Default | Role & Interaction Notes |
+| --- | --- | --- |
+| `enabled` | `false` | Master switch for the Magic Context extension. When `false`, the extension does not register tools, hooks, or transforms. |
+| `historianEnabled` | `true` | Enables background LLM-driven session compaction into `<session-history>`. Requires `historianModel` to be set. |
+| `historianModel` | `""` | Provider/model ID for Historian compaction (e.g. `gm/gemini-3.8-flash` or `lmxu/gpt-5.6-sol:high`). Empty keeps Historian inactive. |
+| `historianThinkingLevel` | `""` | Reasoning effort for Historian subagent: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Empty uses provider default. |
+| `searchEnabled` | `true` | Exposes local SQLite `ctx_search`. Note: when `agentmemory.memoryTools` is active, unified `memory_search` automatically takes precedence and `ctx_search` is suppressed. |
+| `noteEnabled` | `true` | Exposes local SQLite `ctx_note` tool and note nudges. Set to `false` when using AgentMemory to avoid confusing local session notes with durable memories. |
+| `agentmemory.enabled` | `false` | Master switch for the AgentMemory REST bridge. Connects OMP to an external AgentMemory service. |
+| `agentmemory.url` | `http://127.0.0.1:3111` | REST service URL. Can be overridden via `AGENTMEMORY_URL` environment variable. |
+| `agentmemory.secret` | `""` | Bearer authentication secret. Can be overridden via `AGENTMEMORY_SECRET` environment variable. |
+| `agentmemory.project` | `""` | Explicit project namespace. If blank, automatically resolves to Git repo root or working directory. |
+| `agentmemory.agentId` | `""` | Optional caller identifier tag. Can be overridden via `AGENT_ID` environment variable. |
+| `agentmemory.capture` | `true` | Automatically captures session start/end, tool outputs, and assistant messages to AgentMemory for background observation and indexing. |
+| `agentmemory.inject` | `true` | Automatically recalls relevant long-term memories and injects them as a cache-stable Context Projection block after the triggering user message. Disable for tool-first recall only. |
+| `agentmemory.historianRetrieval` | `true` | Allows the background Historian compaction process to query AgentMemory for project context to enrich session summaries. |
+| `agentmemory.memoryTools` | `true` | Exposes `memory_search` (federated search across local session history and remote durable memory) and `memory_save` (durable write outbox) to the agent. |
+| `agentmemory.requireHttps` | `false` | Security policy: fails closed if bearer secret targets non-loopback plaintext HTTP. Default `false` allows Tailscale/LAN HTTP. |

@@ -30,78 +30,83 @@
 			"enabled": {
 				"type": "boolean",
 				"default": false,
-				"description": "Leave off on the daily OMP until Durable Memory is unregistered (ADR-0001)."
+				"description": "Master switch for Magic Context. Enables continuous session window management, turn compaction, tag tracking, and context reduction."
 			},
 			"searchEnabled": {
 				"type": "boolean",
 				"default": true,
-				"description": "Register ctx_search for session-history retrieval. Disable to remove it from the agent tool surface."
+				"description": "Expose the standalone 'ctx_search' tool for local session history search. (Automatically superseded by unified 'memory_search' when AgentMemory tools are enabled)."
 			},
 			"noteEnabled": {
 				"type": "boolean",
 				"default": true,
-				"description": "Register ctx_note and session-note nudges. Disable to remove both."
+				"description": "Expose the local SQLite note tool 'ctx_note'. Set to false when using AgentMemory so the agent relies exclusively on durable memory (memory_save)."
 			},
 			"historianEnabled": {
 				"type": "boolean",
 				"default": true,
-				"description": "Allow historian compaction runs when historianModel is configured."
+				"description": "Enable background LLM-driven session compaction (Historian), which automatically summarizes older turns into <session-history> when historianModel is configured."
 			},
 			"historianModel": {
 				"type": "string",
 				"default": "",
-				"description": "Provider/model ID used for historian compaction, for example lmxu/gpt-5.6-sol:high. Empty keeps historian inactive."
+				"description": "Provider/model ID used for background Historian compaction (e.g. 'gm/gemini-3.8-flash' or 'lmxu/gpt-5.6-sol:high'). Empty keeps Historian inactive."
+			},
+			"historianThinkingLevel": {
+				"type": "string",
+				"default": "",
+				"description": "Optional reasoning/thinking effort level for the Historian compaction model ('off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'). Empty uses the model default."
 			},
 			"agentmemory.enabled": {
 				"type": "boolean",
 				"default": false,
-				"description": "Opt in to the mctx-owned bridge for an unmodified agentmemory service."
+				"description": "Master switch to connect OMP to an external AgentMemory service for cross-session durable memory, project knowledge, and automated recall."
 			},
 			"agentmemory.url": {
 				"type": "string",
 				"default": "http://127.0.0.1:3111",
-				"description": "Agentmemory service URL. AGENTMEMORY_URL overrides this value."
+				"description": "Base URL of the AgentMemory REST service (e.g. 'http://127.0.0.1:3111' or Tailscale node URL). AGENTMEMORY_URL overrides this."
 			},
 			"agentmemory.secret": {
 				"type": "string",
 				"default": "",
 				"secret": true,
-				"description": "Bearer secret for authenticating with the agentmemory service. AGENTMEMORY_SECRET overrides this value."
+				"description": "Bearer token authentication secret for the AgentMemory service. AGENTMEMORY_SECRET overrides this."
 			},
 			"agentmemory.project": {
 				"type": "string",
 				"default": "",
-				"description": "Explicit agentmemory project identity; Git root and cwd are fallbacks."
+				"description": "Explicit project name used to scope memories in AgentMemory. Blank defaults to the Git repository root or working directory."
 			},
 			"agentmemory.agentId": {
 				"type": "string",
 				"default": "",
-				"description": "Optional agent tag. AGENT_ID overrides this value."
+				"description": "Optional agent tag identifying this OMP instance in AgentMemory. AGENT_ID overrides this."
 			},
 			"agentmemory.capture": {
 				"type": "boolean",
 				"default": true,
-				"description": "Capture session, tool, and assistant observations."
+				"description": "Automatically capture session lifecycle events, tool outputs, and assistant observations to AgentMemory for background learning and indexing."
 			},
 			"agentmemory.inject": {
 				"type": "boolean",
 				"default": true,
-				"description": "Admit automatic recall as a cache-stable Context Projection event after the triggering user entry. Disable for tool-first memory_search only."
+				"description": "Automatically recall relevant long-term memories and inject them as a cache-stable Context Projection block after each user message. Disable for tool-only search."
 			},
 			"agentmemory.historianRetrieval": {
 				"type": "boolean",
 				"default": true,
-				"description": "Allow historian retrieval augmentation."
+				"description": "Allow the background Historian compaction process to query AgentMemory to produce richer, memory-aware session summaries."
 			},
 			"agentmemory.memoryTools": {
 				"type": "boolean",
 				"default": true,
-				"description": "Enable the bridge memory tool surface."
+				"description": "Expose AgentMemory tools to the agent: 'memory_search' (federated search across session context and durable memories) and 'memory_save' (explicit durable fact write)."
 			},
 			"agentmemory.requireHttps": {
 				"type": "boolean",
 				"default": false,
-				"description": "Fail closed when a bearer secret targets non-loopback plaintext HTTP."
+				"description": "Fail closed with an error if a bearer secret would be transmitted over plaintext HTTP to a non-loopback host. Default false allows Tailscale/LAN HTTP."
 			}
 		}
 	},
