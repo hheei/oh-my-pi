@@ -12,6 +12,8 @@ import { loadToolDefinitionMeasurements, setDatabase as setToolDefinitionDatabas
 import { createDbLkgPersistence, LKG_SLOTS_DDL } from "../hooks/lkg-persist";
 import { registerLkgPersistence } from "../hooks/lkg-slot";
 import { ensureAgentMemoryOutboxSchema } from "../../agentmemory/outbox";
+import { ensureRecallLedgerSchema } from "../../agentmemory/recall-ledger";
+import { ensureContextProjectionSchema } from "./context-projection";
 
 const databases = new Map<string, Database>();
 const pendingAsyncOpens = new Map<string, Promise<Database>>();
@@ -218,6 +220,8 @@ export function initializeDatabase(db: Database, options: { memoryEnabled?: bool
 	}
 	db.exec(LKG_SLOTS_DDL);
 	ensureAgentMemoryOutboxSchema(db);
+	ensureRecallLedgerSchema(db);
+	ensureContextProjectionSchema(db);
 	invalidateSqliteTableCache(db);
 }
 

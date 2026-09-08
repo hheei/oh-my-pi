@@ -10,6 +10,18 @@ import { Database } from "../shared/sqlite";
 import { closeQuietly, hasSqliteTable } from "../shared/sqlite-helpers";
 import { loadPersistedLkgSlot, saveLkgSlotToDb } from "../hooks/lkg-persist";
 
+const RECALL_LEDGER_TABLES = [
+	"mctx_projection_epochs",
+	"mctx_projection_epoch_reachability",
+	"mctx_recall_events",
+	"mctx_recall_sources",
+	"mctx_recall_dependencies",
+	"mctx_recall_presentation_receipts",
+	"mctx_recall_recovery_refs",
+	"mctx_projection_heads",
+	"mctx_branch_lineage",
+] as const;
+
 describe("Window-only fresh schema", () => {
 	const databases: Database[] = [];
 
@@ -33,6 +45,7 @@ describe("Window-only fresh schema", () => {
 		expect(existing.some(({ name }) => name === "message_history_fts")).toBe(true);
 		expect(existing.some(({ name }) => name === "session_meta")).toBe(true);
 		expect(existing.some(({ name }) => name === "lkg_slots")).toBe(true);
+		for (const table of RECALL_LEDGER_TABLES) expect(hasSqliteTable(db, table)).toBe(true);
 	});
 
 	test("does not recreate legacy durable-memory tables from a retired option", () => {
@@ -49,8 +62,8 @@ describe("Window-only fresh schema", () => {
 		databases.push(db);
 		db.exec(
 			"CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY); " +
-				"CREATE TABLE memories (id INTEGER PRIMARY KEY, content TEXT NOT NULL); " +
-				"INSERT INTO memories (id, content) VALUES (7, 'retain this legacy fact')",
+			"CREATE TABLE memories (id INTEGER PRIMARY KEY, content TEXT NOT NULL); " +
+			"INSERT INTO memories (id, content) VALUES (7, 'retain this legacy fact')",
 		);
 
 		initializeDatabase(db);
@@ -61,6 +74,77 @@ describe("Window-only fresh schema", () => {
 		expect(
 			db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_meta'").get(),
 		).toBeDefined();
+	});
+
+	test("installs the recall ledger without rewriting legacy, outbox, or taint rows", () => {
+		const db = new Database(join(mkdtempSync(join(tmpdir(), "omp-mctx-ledger-upgrade-")), "context.db"));
+		databases.push(db);
+		db.exec(
+			"CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY); " +
+			"CREATE TABLE memories (id INTEGER PRIMARY KEY, content TEXT NOT NULL); " +
+			"CREATE TABLE agentmemory_outbox (" +
+			"id INTEGER PRIMARY KEY AUTOINCREMENT, candidate_hash TEXT NOT NULL UNIQUE, project TEXT NOT NULL, " +
+			"agent_id TEXT, payload_json TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', " +
+			"attempts INTEGER NOT NULL DEFAULT 0, lease_owner TEXT, lease_until INTEGER, " +
+			"next_attempt_at INTEGER NOT NULL, delivered_at INTEGER, last_error TEXT, created_at INTEGER NOT NULL); " +
+			"CREATE TABLE agentmemory_turn_taint (" +
+			"session_id TEXT NOT NULL, turn_id TEXT NOT NULL, reason TEXT NOT NULL, created_at INTEGER NOT NULL, " +
+			"PRIMARY KEY (session_id, turn_id)); " +
+			"INSERT INTO memories (id, content) VALUES (7, 'retain this legacy fact'); " +
+			"INSERT INTO agentmemory_outbox (candidate_hash, project, payload_json, state, attempts, next_attempt_at, created_at) " +
+			"VALUES ('candidate-sha', 'git:/repo', '{\"fact\":\"keep bytes\"}', 'pending', 0, 100, 99); " +
+			"INSERT INTO agentmemory_turn_taint (session_id, turn_id, reason, created_at) " +
+			"VALUES ('old-session', 'turn-1', 'legacy taint', 98)",
+		);
+
+		const before = {
+			memory: db.prepare("SELECT id, content FROM memories").get(),
+			outbox: db
+				.prepare("SELECT candidate_hash, project, payload_json, state, attempts, next_attempt_at, created_at FROM agentmemory_outbox")
+				.get(),
+			taint: db.prepare("SELECT session_id, turn_id, reason, created_at FROM agentmemory_turn_taint").get(),
+		};
+		initializeDatabase(db);
+
+		expect({
+			memory: db.prepare("SELECT id, content FROM memories").get(),
+			outbox: db
+				.prepare("SELECT candidate_hash, project, payload_json, state, attempts, next_attempt_at, created_at FROM agentmemory_outbox")
+				.get(),
+			taint: db.prepare("SELECT session_id, turn_id, reason, created_at FROM agentmemory_turn_taint").get(),
+		}).toEqual(before);
+		for (const table of RECALL_LEDGER_TABLES) expect(hasSqliteTable(db, table)).toBe(true);
+		expect(db.prepare("SELECT count(*) AS count FROM mctx_recall_events").get()).toEqual({ count: 0 });
+		expect(db.prepare("SELECT count(*) AS count FROM mctx_projection_epochs").get()).toEqual({ count: 0 });
+		expect(db.prepare("SELECT count(*) AS count FROM mctx_projection_heads").get()).toEqual({ count: 0 });
+	});
+
+	test("preserves Window outbox and taint rows across repeated ledger installation", () => {
+		const db = new Database(join(mkdtempSync(join(tmpdir(), "omp-mctx-ledger-reopen-")), "context.db"));
+		databases.push(db);
+		initializeDatabase(db);
+		db.prepare(
+			"INSERT INTO agentmemory_outbox (candidate_hash, project, payload_json, state, attempts, next_attempt_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		).run("window-candidate", "git:/window", "{\"value\":1}", "pending", 0, 200, 199);
+		db.prepare(
+			"INSERT INTO agentmemory_turn_taint (session_id, turn_id, reason, created_at) VALUES (?, ?, ?, ?)",
+		).run("window-session", "window-turn", "window taint", 198);
+
+		const before = {
+			outbox: db
+				.prepare("SELECT candidate_hash, project, payload_json, state, attempts, next_attempt_at, created_at FROM agentmemory_outbox")
+				.get(),
+			taint: db.prepare("SELECT session_id, turn_id, reason, created_at FROM agentmemory_turn_taint").get(),
+		};
+		initializeDatabase(db);
+
+		expect({
+			outbox: db
+				.prepare("SELECT candidate_hash, project, payload_json, state, attempts, next_attempt_at, created_at FROM agentmemory_outbox")
+				.get(),
+			taint: db.prepare("SELECT session_id, turn_id, reason, created_at FROM agentmemory_turn_taint").get(),
+		}).toEqual(before);
+		expect(db.prepare("SELECT count(*) AS count FROM mctx_recall_events").get()).toEqual({ count: 0 });
 	});
 
 	test("clears Window-only sessions without legacy tables", () => {
