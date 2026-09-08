@@ -146,7 +146,7 @@ All switches take effect at reload/restart (Pi registers tools once per process)
 | --- | --- | --- |
 | `enabled` | `false` | Master switch for the Magic Context extension. When `false`, the extension does not register tools, hooks, or transforms. |
 | `historianEnabled` | `true` | Enables background LLM-driven session compaction into `<session-history>`. Requires `historianModel` to be set. |
-| `historianModel` | `""` | Provider/model ID for Historian compaction (e.g. `gm/gemini-3.8-flash` or `lmxu/gpt-5.6-sol:high`). Empty keeps Historian inactive. |
+| `historianModel` | `""` | Provider/model ID for Historian compaction (e.g. `gm/gemini-3.8-flash` or `lmxu/gpt-5.6-sol`). Do not append `:thinking` here; configure `historianThinkingLevel` separately. Empty keeps Historian inactive. |
 | `historianThinkingLevel` | `""` | Reasoning effort for Historian subagent: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Empty uses provider default. |
 | `searchEnabled` | `true` | Exposes local SQLite `ctx_search`. Note: when `agentmemory.memoryTools` is active, unified `memory_search` automatically takes precedence and `ctx_search` is suppressed. |
 | `noteEnabled` | `true` | Exposes local SQLite `ctx_note` tool and note nudges. Set to `false` when using AgentMemory to avoid confusing local session notes with durable memories. |

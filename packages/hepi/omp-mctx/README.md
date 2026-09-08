@@ -56,7 +56,7 @@ omp plugin config set @hheei/omp-mctx <key> <value>
 |---|---|---|---|
 | `enabled` | `boolean` | `false` | Master switch for the Magic Context extension. Enables continuous session window management, turn compaction into `<session-history>`, tag tracking (`§N§`), and `ctx_reduce` / `ctx_expand` controls. |
 | `historianEnabled` | `boolean` | `true` | Enable background LLM-driven session compaction (Historian). When active, older turns are automatically summarized into structured `<session-history>` compartments when the token threshold is reached. |
-| `historianModel` | `string` | `""` | Provider/model ID used for background Historian compaction (e.g. `gm/gemini-3.8-flash` or `lmxu/gpt-5.6-sol:high`). Must be set for Historian to run. |
+| `historianModel` | `string` | `""` | Provider/model ID used for background Historian compaction (e.g. `gm/gemini-3.8-flash` or `lmxu/gpt-5.6-sol`). Do not append `:thinking` here; configure `historianThinkingLevel` separately. Must be set for Historian to run. |
 | `historianThinkingLevel` | `string` | `""` | Reasoning/thinking effort level for the Historian model (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`). Empty uses the model default. Recommended `low` for reasoning models. |
 
 ### Tool Surface Controls

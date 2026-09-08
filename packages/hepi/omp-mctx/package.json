@@ -50,7 +50,7 @@
 			"historianModel": {
 				"type": "string",
 				"default": "",
-				"description": "Provider/model ID used for background Historian compaction (e.g. 'gm/gemini-3.8-flash' or 'lmxu/gpt-5.6-sol:high'). Empty keeps Historian inactive."
+				"description": "Provider/model ID used for background Historian compaction (e.g. 'gm/gemini-3.8-flash' or 'lmxu/gpt-5.6-sol'). Do not append thinking level here; use historianThinkingLevel instead. Empty keeps Historian inactive."
 			},
 			"historianThinkingLevel": {
 				"type": "string",
