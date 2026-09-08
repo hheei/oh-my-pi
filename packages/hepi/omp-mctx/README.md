@@ -73,13 +73,14 @@ omp plugin config set @hheei/omp-mctx <key> <value>
 | `agentmemory.enabled` | `boolean` | `false` | Enables the bridge to an external AgentMemory service for cross-session durable memory and recall. |
 | `agentmemory.url` | `string` | `http://127.0.0.1:3111` | AgentMemory service REST endpoint URL. `AGENTMEMORY_URL` environment variable overrides this. |
 | `agentmemory.secret` | `string` | `""` | Bearer token secret for authenticating with the AgentMemory service. `AGENTMEMORY_SECRET` overrides this. |
-| `agentmemory.project` | `string` | `""` | Project namespace for scoping memories in AgentMemory. Defaults to the Git repository root or working directory. |
 | `agentmemory.agentId` | `string` | `""` | Agent identifier tag passed to AgentMemory. `AGENT_ID` environment variable overrides this. |
 | `agentmemory.capture` | `boolean` | `true` | Captures session lifecycle events, tool outputs, and assistant observations to AgentMemory for background indexing. |
 | `agentmemory.inject` | `boolean` | `true` | Admits automatic memory recall as a cache-stable Context Projection block following each user turn. |
 | `agentmemory.historianRetrieval` | `boolean` | `true` | Allows the background Historian compaction process to query AgentMemory for project context. |
 | `agentmemory.memoryTools` | `boolean` | `true` | Exposes AgentMemory tools to the agent: `memory_search` (federated search) and `memory_save` (durable memory write). |
 | `agentmemory.requireHttps` | `boolean` | `false` | Enforces HTTPS when sending bearer authentication to non-loopback hosts. Default false permits private networks such as Tailscale. |
+
+> **Project Identity:** The project namespace is never configured globally; it is derived automatically from the Git repository root (preserving the same identity across worktrees) or working directory. For ad-hoc overrides, use the `AGENTMEMORY_PROJECT_NAME` environment variable.
 
 ## What you get
 

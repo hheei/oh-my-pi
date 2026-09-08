@@ -73,11 +73,6 @@
 				"secret": true,
 				"description": "Bearer token secret for authenticating with the AgentMemory service. AGENTMEMORY_SECRET overrides this."
 			},
-			"agentmemory.project": {
-				"type": "string",
-				"default": "",
-				"description": "Project namespace for scoping memories in AgentMemory. Defaults to the Git repository root or working directory."
-			},
 			"agentmemory.agentId": {
 				"type": "string",
 				"default": "",

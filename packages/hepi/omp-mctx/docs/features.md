@@ -153,10 +153,11 @@ All switches take effect at reload/restart (Pi registers tools once per process)
 | `agentmemory.enabled` | `false` | Enables the bridge to an external AgentMemory service for cross-session durable memory and recall. |
 | `agentmemory.url` | `http://127.0.0.1:3111` | AgentMemory service REST endpoint URL. `AGENTMEMORY_URL` environment variable overrides this. |
 | `agentmemory.secret` | `""` | Bearer token secret for authenticating with the AgentMemory service. `AGENTMEMORY_SECRET` overrides this. |
-| `agentmemory.project` | `""` | Project namespace for scoping memories in AgentMemory. Defaults to the Git repository root or working directory. |
 | `agentmemory.agentId` | `""` | Agent identifier tag passed to AgentMemory. `AGENT_ID` environment variable overrides this. |
 | `agentmemory.capture` | `true` | Captures session lifecycle events, tool outputs, and assistant observations to AgentMemory for background indexing. |
 | `agentmemory.inject` | `true` | Admits automatic memory recall as a cache-stable Context Projection block following each user turn. |
 | `agentmemory.historianRetrieval` | `true` | Allows the background Historian compaction process to query AgentMemory for project context. |
 | `agentmemory.memoryTools` | `true` | Exposes AgentMemory tools to the agent: `memory_search` (federated search) and `memory_save` (durable memory write). |
 | `agentmemory.requireHttps` | `false` | Enforces HTTPS when sending bearer authentication to non-loopback hosts. Default false permits private networks such as Tailscale. |
+
+Project identity is not configured as a global setting. It is resolved automatically per repository from the Git root (preserving identity across worktrees) or directory name, with optional override via `AGENTMEMORY_PROJECT_NAME`.
