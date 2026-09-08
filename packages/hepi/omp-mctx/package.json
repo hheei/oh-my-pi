@@ -62,6 +62,12 @@
 				"default": "http://127.0.0.1:3111",
 				"description": "Agentmemory service URL. AGENTMEMORY_URL overrides this value."
 			},
+			"agentmemory.secret": {
+				"type": "string",
+				"default": "",
+				"secret": true,
+				"description": "Bearer secret for authenticating with the agentmemory service. AGENTMEMORY_SECRET overrides this value."
+			},
 			"agentmemory.project": {
 				"type": "string",
 				"default": "",
