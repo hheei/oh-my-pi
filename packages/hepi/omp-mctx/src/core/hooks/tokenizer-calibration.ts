@@ -130,8 +130,8 @@ export function resolveModelCalibration(
  *   2. **Verbatim** (Compartments, Facts, Memories) — local raw count, no
  *      scaling. Magic-context owns this content end-to-end (rendered XML,
  *      injected via `prepareCompartmentInjection`), and the compressor uses
- *      the same local count for budget math (`execute-status.ts` "History
- *      block"). Showing a different number here would confuse users and
+ *      the same local count for budget math (the status snapshot's History
+ *      block). Showing a different number here would confuse users and
  *      desync the sidebar from `/ctx-status`.
  *   3. **Residual absorbers** (Conversation, Tool Calls) — proportionally
  *      scaled to absorb whatever's left after (1) and (2). These have the

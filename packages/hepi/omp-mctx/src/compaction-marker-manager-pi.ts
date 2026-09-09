@@ -1,5 +1,9 @@
 import { getCompartmentsByEndMessageId } from "#core/features/compartment-storage";
-import type { PendingPiCompactionMarker } from "#core/features/storage-meta-persisted";
+import {
+	clearPendingPiCompactionMarkerStateIf,
+	getNativeCompactionFence,
+	type PendingPiCompactionMarker,
+} from "#core/features/storage-meta-persisted";
 import { sessionLog } from "#core/shared/logger";
 import type { Database } from "#core/shared/sqlite";
 
@@ -7,9 +11,9 @@ export type PiMarkerUpdateOutcome =
 	| { kind: "applied"; firstKeptEntryId: string }
 	| { kind: "already-current" }
 	| {
-			kind: "stale-skip";
-			reason: "compartment-removed" | "target-superseded" | "entry-removed";
-	  }
+		kind: "stale-skip";
+		reason: "compartment-removed" | "target-superseded" | "entry-removed" | "native-fence";
+	}
 	| { kind: "retryable-failure"; error: Error };
 
 export interface ApplyDeferredPiCompactionMarkerDeps {
@@ -56,6 +60,13 @@ export function applyDeferredPiCompactionMarker(
 			if (latestFirstKeptIndex >= pendingFirstKeptIndex) {
 				return { kind: "already-current" };
 			}
+		}
+
+		const fence = getNativeCompactionFence(deps.db, sessionId);
+		const markerGeneration = Number.isFinite(pending.generation) ? pending.generation : 0;
+		if (fence.active || fence.generation !== markerGeneration) {
+			clearPendingPiCompactionMarkerStateIf(deps.db, sessionId, pending);
+			return { kind: "stale-skip", reason: "native-fence" };
 		}
 
 		const compactionId = deps.appendCompaction(

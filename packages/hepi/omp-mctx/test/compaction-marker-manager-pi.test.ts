@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { appendCompartments } from "#core/features/compartment-storage";
 import type { PendingPiCompactionMarker } from "#core/features/storage";
+import { beginNativeCompactionFence } from "#core/features/storage-meta-persisted";
 import { closeQuietly } from "#core/shared/sqlite-helpers";
 import {
 	applyDeferredPiCompactionMarker,
@@ -73,6 +74,35 @@ describe("Pi deferred compaction marker manager", () => {
 				{ source: "magic-context", lastCompactedOrdinal: 2 },
 				true,
 			);
+		} finally {
+			closeQuietly(db);
+		}
+	});
+
+	it("rejects a marker captured before native compaction without appending again", () => {
+		const db = createTestDb();
+		try {
+			appendCompartments(db, "ses", [
+				{
+					sequence: 0,
+					startMessage: 1,
+					endMessage: 2,
+					startMessageId: "m1",
+					endMessageId: "m2",
+					title: "A",
+					content: "B",
+				},
+			]);
+			beginNativeCompactionFence(db, "ses");
+			const appendCompaction = vi.fn(() => "second-compaction");
+			expect(
+				applyDeferredPiCompactionMarker(
+					{ db, readBranchEntries: () => branch(), appendCompaction },
+					"ses",
+					pending(),
+				),
+			).toEqual({ kind: "stale-skip", reason: "native-fence" });
+			expect(appendCompaction).not.toHaveBeenCalled();
 		} finally {
 			closeQuietly(db);
 		}

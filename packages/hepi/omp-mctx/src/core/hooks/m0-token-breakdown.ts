@@ -45,6 +45,8 @@ export function computeM0BlockTokens(
 		memoryBlockCount: number;
 		/** Exact history token count managed by the Rust module outside this local database. */
 		compartmentTokensOverride?: number | undefined;
+		/** Active model token counter for status attribution. */
+		countTokens?: ((text: string) => number) | undefined;
 	},
 ): M0BlockTokens {
 	const {
@@ -54,18 +56,19 @@ export function computeM0BlockTokens(
 		memoryBlockCount,
 		compartmentTokensOverride,
 	} = args;
+	const countTokens = args.countTokens ?? estimateTokens;
 
 	const docsBlock = extractM0Block(m0Text, "project-docs");
-	const docsTokens = docsBlock ? estimateTokens(docsBlock) : 0;
+	const docsTokens = docsBlock ? countTokens(docsBlock) : 0;
 
 	const profileBlock = extractM0Block(m0Text, "user-profile");
-	const profileTokens = profileBlock ? estimateTokens(profileBlock) : 0;
+	const profileTokens = profileBlock ? countTokens(profileBlock) : 0;
 
 	let memoryTokens = 0;
 	let memoryFromM0 = false;
 	const memoryBlock = extractM0Block(m0Text, "project-memory");
 	if (memoryBlock) {
-		memoryTokens = estimateTokens(memoryBlock);
+		memoryTokens = countTokens(memoryBlock);
 		memoryFromM0 = true;
 	}
 
@@ -83,7 +86,7 @@ export function computeM0BlockTokens(
 		compartmentTokens = compartmentTokensOverride;
 	} else if (historyBlock) {
 		// Real decayed render, counted exactly from the cached wire block.
-		compartmentTokens = estimateTokens(historyBlock);
+		compartmentTokens = countTokens(historyBlock);
 	} else {
 		// No materialized m[0] yet (brand-new / pre-first-materialization).
 		// Fall back to the Σp1 estimate so the bucket isn't blank on a cold
@@ -103,7 +106,7 @@ export function computeM0BlockTokens(
 				)
 				.all(sessionId);
 			for (const c of compRows) {
-				compartmentTokens += estimateTokens(
+				compartmentTokens += countTokens(
 					`## ${c.start_message}-${c.end_message} · ${c.title}\n${c.content}\n`,
 				);
 			}
@@ -121,7 +124,7 @@ export function computeM0BlockTokens(
 				? trimMemoriesToBudgetV2(sessionId, memories, injectionBudgetTokens).renderOrder
 				: memories;
 			const block = renderMemoryBlockV2(selected);
-			memoryTokens = block ? estimateTokens(block) : 0;
+			memoryTokens = block ? countTokens(block) : 0;
 		} catch {
 			memoryTokens = 0;
 		}

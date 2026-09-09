@@ -14,6 +14,7 @@ import { registerLkgPersistence } from "../hooks/lkg-slot";
 import { ensureAgentMemoryOutboxSchema } from "../../agentmemory/outbox";
 import { ensureRecallLedgerSchema } from "../../agentmemory/recall-ledger";
 import { ensureContextProjectionSchema } from "./context-projection";
+import { ensureStatusTokenAttributionColumns } from "./storage-meta-shared";
 
 const databases = new Map<string, Database>();
 const pendingAsyncOpens = new Map<string, Promise<Database>>();
@@ -222,6 +223,7 @@ export function initializeDatabase(db: Database, options: { memoryEnabled?: bool
 	ensureAgentMemoryOutboxSchema(db);
 	ensureRecallLedgerSchema(db);
 	ensureContextProjectionSchema(db);
+	ensureStatusTokenAttributionColumns(db);
 	invalidateSqliteTableCache(db);
 }
 

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { closeDatabase, openDatabase } from "../../../src/core/features/storage-db";
 import {
+	getLatestMeaningfulHistorianRun,
 	recordHistorianRun,
 	summarizeImportance,
 	tallyFactsByCategory,
@@ -94,6 +95,47 @@ test("records a success run with full metrics and reads back", () => {
 	expect(row.importance_avg).toBe(56.5);
 	expect(row.discarded_last).toBe(1);
 	expect(row.legacy).toBe(0);
+});
+
+test("reads the latest successful run and excludes noop telemetry", () => {
+	const db = openDatabase();
+	const sessionId = "ses-latest-success";
+	recordHistorianRun(db, {
+		sessionId,
+		harness: "pi",
+		runKind: "incremental",
+		status: "success",
+		compartmentsProduced: 1,
+	});
+	recordHistorianRun(db, {
+		sessionId,
+		harness: "pi",
+		runKind: "incremental",
+		status: "noop",
+	});
+	expect(getLatestMeaningfulHistorianRun(db, sessionId)).toMatchObject({
+		runKind: "incremental",
+		compartmentsProduced: 1,
+	});
+	recordHistorianRun(db, {
+		sessionId,
+		harness: "pi",
+		runKind: "upgrade",
+		status: "success",
+		compartmentsProduced: 4,
+		factsEmitted: 2,
+	});
+	expect(getLatestMeaningfulHistorianRun(db, sessionId)).toMatchObject({
+		runKind: "upgrade",
+		compartmentsProduced: 4,
+		factsEmitted: 2,
+	});
+});
+
+test("omits latest success when historian telemetry is absent", () => {
+	const db = openDatabase();
+	db.exec("DROP TABLE historian_runs");
+	expect(getLatestMeaningfulHistorianRun(db, "ses-no-telemetry")).toBeNull();
 });
 
 test("records a failure run with a reason and no compartments", () => {

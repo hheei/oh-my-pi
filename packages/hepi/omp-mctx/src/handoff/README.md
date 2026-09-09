@@ -17,4 +17,5 @@ interactive conversation.
   destination `magic-context:handoff` custom message.
 - SQLite stores only the short-lived handoff lease.
 
-See `docs/handoff/README.md` and `docs/adr/0016-pi-mctx-clean-session-handoff.md`.
+The source implementation is retained for reference; `/handoff` is not
+registered by omp-mctx.

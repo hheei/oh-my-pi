@@ -9,8 +9,8 @@ import type { NotificationParams } from "./send-session-notification";
 
 /**
  * Live progress for a running recomp / session-upgrade, surfaced in the TUI
- * sidebar + /ctx-status so users can watch a long rebuild instead of staring at
- * a single "started" toast. Lives in `LiveSessionState.recompProgressBySession`
+ * and `/ctx-status` so users can watch a long rebuild instead of staring at a
+ * single "started" toast. Lives in `LiveSessionState.recompProgressBySession`
  * (process-local, in-memory — if the process restarts mid-recomp the recomp
  * itself is interrupted, so losing the progress entry is correct).
  *
@@ -23,9 +23,8 @@ export interface RecompProgress {
 	sessionId: string;
 	/** Which user-facing flow this progress belongs to. `/ctx-recomp` rebuilds
 	 *  compartments and is labeled "Recomp"; `/ctx-session-upgrade` (legacy→v2 +
-	 *  memory migration) is labeled "Upgrade". Without this the sidebar/status
-	 *  hardcoded "Upgrade" wording for BOTH, so a plain recomp showed
-	 *  "Recomp / ✗ Upgrade failed" — a self-contradiction (dogfood 2026-06-04,
+	 *  memory migration) is labeled "Upgrade". Without this, status would use
+	 *  contradictory wording for a plain recomp failure (dogfood 2026-06-04,
 	 *  a 0-compartment session in a project whose other sessions had them).
 	 *  Optional + defaults to "recomp" so runner-emitted per-pass entries (which
 	 *  don't know the flow) inherit the kind set by setRecompStarting. */
@@ -71,11 +70,11 @@ export interface CompartmentRunnerDeps {
 	 *  snapshots re-resolve with the keep-watermark override instead of falling
 	 *  back to normal pressure math. */
 	refreshBoundarySnapshot?:
-		| ((
-				snapshot: ProtectedTailBoundarySnapshot,
-				validation: BoundarySnapshotValidationResult,
-		  ) => ProtectedTailBoundarySnapshot | null)
-		| undefined;
+	| ((
+		snapshot: ProtectedTailBoundarySnapshot,
+		validation: BoundarySnapshotValidationResult,
+	) => ProtectedTailBoundarySnapshot | null)
+	| undefined;
 	/** Current resolved main-model context limit used to reject stale boundary snapshots after model switches. */
 	currentContextLimit?: number | undefined;
 	/** Resolved fallback chain for historian-family calls (historian + compressor). */
@@ -111,7 +110,7 @@ export interface CompartmentRunnerDeps {
 	 * run as published before invoking this callback.
 	 */
 	onCompartmentStatePublished?: ((sessionId: string) => void) | undefined;
-	/** Live recomp-phase progress callback (sidebar / status). The runner emits
+	/** Live recomp-phase progress callback (status). The runner emits
 	 *  "recomp"-phase updates (start + each pass); the caller owns the migration
 	 *  and terminal (done/failed) phases. Best-effort, never throws into the loop. */
 	onRecompProgress?: ((progress: RecompProgress) => void) | undefined;
@@ -178,29 +177,29 @@ export interface HistorianRunResult {
 
 export type ValidatedHistorianPassResult =
 	| {
-			ok: true;
-			compartments: CandidateCompartment[];
-			facts: Array<{ category: string; content: string }>;
-			userObservations?: string[] | undefined;
-			/** Durable standing-question candidates for Primers v1 (stored side-table only).
-			 *  `originCompartmentIndex` is the 1-based index into THIS publish's
-			 *  emitted compartments (same convention as `<events>` at_compartment);
-			 *  undefined → emission falls back to the chunk span. */
-			primerCandidates?:
-				| Array<{ question: string; originCompartmentIndex?: number | undefined }>
-				| undefined;
-			/** v2: historian-extracted events (stored, not rendered). */
-			events?: ParsedEvent[] | undefined;
-			/**
-			 * Subagent-invocation id of the model attempt that actually produced
-			 * this validated output (primary, repair, editor, or fallback). The
-			 * caller uses it as the exact `historian_runs.subagent_invocation_id`
-			 * FK so the telemetry row joins to the right tokens/model — a kind-
-			 * filtered "latest invocation" lookup mislinks recomp passes (recorded
-			 * under subagent='recomp') to a stale subagent='historian' row.
-			 */
-			invocationId?: number | null | undefined;
-	  }
+		ok: true;
+		compartments: CandidateCompartment[];
+		facts: Array<{ category: string; content: string }>;
+		userObservations?: string[] | undefined;
+		/** Durable standing-question candidates for Primers v1 (stored side-table only).
+		 *  `originCompartmentIndex` is the 1-based index into THIS publish's
+		 *  emitted compartments (same convention as `<events>` at_compartment);
+		 *  undefined → emission falls back to the chunk span. */
+		primerCandidates?:
+		| Array<{ question: string; originCompartmentIndex?: number | undefined }>
+		| undefined;
+		/** v2: historian-extracted events (stored, not rendered). */
+		events?: ParsedEvent[] | undefined;
+		/**
+		 * Subagent-invocation id of the model attempt that actually produced
+		 * this validated output (primary, repair, editor, or fallback). The
+		 * caller uses it as the exact `historian_runs.subagent_invocation_id`
+		 * FK so the telemetry row joins to the right tokens/model — a kind-
+		 * filtered "latest invocation" lookup mislinks recomp passes (recorded
+		 * under subagent='recomp') to a stale subagent='historian' row.
+		 */
+		invocationId?: number | null | undefined;
+	}
 	| { ok: false; error: string; invocationId?: number | null };
 
 export interface StoredCompartmentRange {

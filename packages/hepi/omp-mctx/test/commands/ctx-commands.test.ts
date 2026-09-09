@@ -293,24 +293,6 @@ describe("Pi Magic Context commands", () => {
 		});
 	});
 
-	it("/ctx-status passes dreamer enabled field through details", async () => {
-		const db = createDb();
-		const { pi, handlers, sent } = createMockPi();
-		registerCtxStatusCommand(pi as never, {
-			db,
-			projectIdentity: "/tmp/project",
-			dreamer: { runnable: true, scheduleSummary: "verify 0 3 * * *" },
-		});
-
-		await handlers.get("ctx-status")?.("", createCtx());
-		expect(sent[0]?.data.details).toMatchObject({
-			dreamer: {
-				enabled: true,
-				scheduleSummary: "verify 0 3 * * *",
-			},
-		});
-	});
-
 	it("registers /ctx-recomp and requires confirmation before running", async () => {
 		const db = createDb();
 		const { pi, handlers, sent } = createMockPi();

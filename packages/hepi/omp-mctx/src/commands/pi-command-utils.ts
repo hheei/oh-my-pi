@@ -101,6 +101,7 @@ export function sendCtxStatusMessage(
 	pi: PiMessageSender,
 	content: CtxStatusMessageContent,
 	details?: unknown,
+	options: { log?: boolean } = {},
 ): void {
 	const data: CtxStatusEntryData = {
 		...content,
@@ -114,5 +115,5 @@ export function sendCtxStatusMessage(
 	}
 	// Minimal non-interactive API shims may omit appendEntry; logging remains the
 	// safe fallback and status text must never be routed through sendMessage.
-	sessionLog("pi-status", `${content.title}: ${content.text}`);
+	if (options.log !== false) sessionLog("pi-status", `${content.title}: ${content.text}`);
 }

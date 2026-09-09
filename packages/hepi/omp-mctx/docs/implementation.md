@@ -1,12 +1,13 @@
 # Implementation
 
-How the features in [features.md](features.md) are wired. Bridge code lives
-under `src/agentmemory/`. Projection store and coordinator live under
-`src/core/features/`. Transform hooks live in `src/context-handler.ts`.
-Registration is `src/index.ts`.
+This document describes how the current features in
+[features.md](features.md) are wired. Bridge code lives under
+`src/agentmemory/`; the projection store and coordinator live under
+`src/core/features/`; transform hooks live in `src/context-handler.ts`; and
+registration is in `src/index.ts`.
 
-coding-agent is not part of this path: `ephemeralMessage` was removed and must
-not return. Recall never uses `sendMessage` or session JSONL.
+Recall is represented in the Context Projection and is not serialized as a
+session JSONL message or sent through a host message shortcut.
 
 ## Ownership
 
@@ -16,9 +17,31 @@ not return. Recall never uses `sendMessage` or session JSONL.
 | omp-mctx           | Window, Context Projection, admission, replay, TUI presentation, outbox, Scope Gate | Backend schema or ranking            |
 | coding-agent       | Generic extension lifecycle, UI, provider conversion                                | AgentMemory-specific ephemeral state |
 
+
+## Window transform and command surface
+
+The Pi context handler is the Window integration point. On each provider-facing
+transform it rebuilds or reuses the active branch, applies tags and queued
+drops, maintains protected-tail and token state, and publishes a last-known-
+good transformed context. `ctx_reduce` queues eligible drops rather than
+deleting text immediately; `/ctx-flush` forces pending operations to be
+materialized on the next provider call. `ctx_expand` reads the durable
+session-history ranges, while `ctx_search` searches the local session lane
+when enabled. `ctx_note` manages session-scoped notes and nudges.
+
+Historian is scheduled by pressure and work-boundary triggers. `/ctx-recomp`,
+`/ctx-wrapup`, and `/ctx-session-upgrade` use isolated subagent runners and
+share lease/progress state with `/ctx-status`; they do not run through the
+AgentMemory bridge. `/ctx-aug` is an independent sidekick invocation whose
+failure preserves the original user prompt.
+
+When `compactionEnabled` is false, Pi owns context-window compaction. mctx
+does not register `ctx_reduce`, and `/ctx-flush` and `/ctx-wrapup` report that
+they are unavailable; the local Window and AgentMemory bridge remain separate.
+
 ## Module map
 
-### Spec 1 — bridge
+### AgentMemory bridge
 
 | Module                             | Role                                                            |
 | ---------------------------------- | --------------------------------------------------------------- |
@@ -35,7 +58,7 @@ not return. Recall never uses `sendMessage` or session JSONL.
 | `src/agentmemory/outbox.ts`        | Atomic remember outbox, lease, retry.                           |
 | `src/pi-historian-runner.ts`       | Host-entry taint walk; skips tainted recall users.              |
 
-### Spec 2 — projection
+### Context Projection
 
 | Module                                                | Role                                                        |
 | ----------------------------------------------------- | ----------------------------------------------------------- |
@@ -178,7 +201,7 @@ or rank remote knowledge.
 
 `package.json` `scripts.test` is the allowed runner. Relevant files:
 
-- `test/agentmemory-foundation.test.ts` — settings, health, capture, inject switch
+- `src/agentmemory-foundation.test.ts` — settings, health, capture, inject switch
 - `test/agentmemory/memory-search.test.ts` — federation, scope, details
 - `test/agentmemory/recall-ledger.test.ts` — identities, receipts, GC
 - `test/agentmemory/recall-admission.test.ts` — admit / reuse / stale / fail

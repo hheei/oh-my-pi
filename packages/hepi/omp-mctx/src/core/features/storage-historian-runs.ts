@@ -1,4 +1,5 @@
 import type { Database } from "../shared/sqlite";
+import { hasSqliteTable } from "../shared/sqlite-helpers";
 
 /**
  * Per historian-invocation telemetry.
@@ -105,6 +106,78 @@ export function recordHistorianRun(db: Database, input: HistorianRunInput): numb
 		return null;
 	}
 }
+
+/** The compact successful-run facts suitable for status surfaces. */
+export interface HistorianRunSummary {
+	id: number;
+	runKind: HistorianRunKind;
+	createdAt: number;
+	compartmentsProduced: number;
+	factsEmitted: number;
+	eventsEmitted: number;
+}
+
+/**
+ * Read the latest meaningful successful run without joining invocation data.
+ * `noop` rows are intentionally excluded: they describe an attempted pass, not
+ * a useful historian outcome. Telemetry is optional on older databases, so a
+ * missing table, malformed row, or query failure is represented as `null`.
+ */
+export function getLatestMeaningfulHistorianRun(
+	db: Database,
+	sessionId: string,
+): HistorianRunSummary | null {
+	try {
+		if (!hasSqliteTable(db, "historian_runs")) return null;
+		const row = db
+			.prepare<
+				[string],
+				{
+					id: number;
+					run_kind: HistorianRunKind;
+					created_at: number;
+					compartments_produced: number;
+					facts_emitted: number;
+					events_emitted: number;
+				}
+			>(
+				`SELECT id, run_kind, created_at, compartments_produced, facts_emitted, events_emitted
+				 FROM historian_runs
+				 WHERE session_id = ? AND status = 'success'
+				 ORDER BY created_at DESC, id DESC
+				 LIMIT 1`,
+			)
+			.get(sessionId);
+		if (!row || typeof row.id !== "number" || typeof row.created_at !== "number") return null;
+		if (
+			(row.run_kind !== "incremental" &&
+				row.run_kind !== "recomp" &&
+				row.run_kind !== "partial-recomp" &&
+				row.run_kind !== "upgrade") ||
+			!Number.isFinite(row.created_at) ||
+			!Number.isFinite(row.id)
+		) {
+			return null;
+		}
+		const compartmentsProduced = Number(row.compartments_produced ?? 0);
+		const factsEmitted = Number(row.facts_emitted ?? 0);
+		const eventsEmitted = Number(row.events_emitted ?? 0);
+		if (![compartmentsProduced, factsEmitted, eventsEmitted].every(Number.isFinite)) return null;
+		return {
+			id: row.id,
+			runKind: row.run_kind,
+			createdAt: row.created_at,
+			compartmentsProduced,
+			factsEmitted,
+			eventsEmitted,
+		};
+	} catch {
+		return null;
+	}
+}
+
+/** Alias named for callers that only need the successful-run distinction. */
+export const getLatestSuccessfulHistorianRun = getLatestMeaningfulHistorianRun;
 
 /** Summarize a list of importance values into min/max/avg (null on empty). */
 export function summarizeImportance(values: readonly number[]): {

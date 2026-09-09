@@ -74,6 +74,14 @@ export interface SessionMeta {
 	systemPromptTokens: number;
 	conversationTokens: number;
 	toolCallTokens: number;
+	/** Latest exact-identity Recall Event contribution in the transformed prompt. */
+	recallTokens: number;
+	/** Revision of the transformed message view used for the stored attribution. */
+	tokenAttributionRevision: string | null;
+	/** Active model identity that selected the tokenizer for the stored attribution. */
+	tokenAttributionModelKey: string | null;
+	/** Wall-clock time at which the transformed attribution was recorded. */
+	tokenAttributionUpdatedAt: number | null;
 	clearedReasoningThroughTag: number;
 	toolReclaimWatermark: number;
 	cachedM0Bytes: Buffer | null;

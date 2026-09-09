@@ -1646,12 +1646,12 @@ export function getOverflowState(
 		)
 		.get(sessionId) as
 		| {
-				detected_context_limit?: number | undefined;
-				detected_context_limit_model_key?: string | null | undefined;
-				detected_context_limit_provenance?: string | null | undefined;
-				needs_emergency_recovery?: number | undefined;
-				emergency_recovery_origin?: string | null | undefined;
-		  }
+			detected_context_limit?: number | undefined;
+			detected_context_limit_model_key?: string | null | undefined;
+			detected_context_limit_provenance?: string | null | undefined;
+			needs_emergency_recovery?: number | undefined;
+			emergency_recovery_origin?: string | null | undefined;
+		}
 		| undefined;
 	if (!result) {
 		return {
@@ -1815,9 +1815,9 @@ export function getPersistedCompactionMarkerState(
 			"SELECT compaction_marker_state, compaction_marker_target_end_message_id FROM session_meta WHERE session_id = ?",
 		)
 		.get(sessionId) as {
-		compaction_marker_state?: string | undefined;
-		compaction_marker_target_end_message_id?: string | null | undefined;
-	} | null;
+			compaction_marker_state?: string | undefined;
+			compaction_marker_target_end_message_id?: string | null | undefined;
+		} | null;
 	const raw = row?.compaction_marker_state;
 	if (!raw || raw.length === 0) return null;
 	try {
@@ -1833,7 +1833,7 @@ export function getPersistedCompactionMarkerState(
 		) {
 			const targetEndMessageId =
 				typeof row?.compaction_marker_target_end_message_id === "string" &&
-				row.compaction_marker_target_end_message_id.length > 0
+					row.compaction_marker_target_end_message_id.length > 0
 					? row.compaction_marker_target_end_message_id
 					: typeof parsed.targetEndMessageId === "string" && parsed.targetEndMessageId.length > 0
 						? parsed.targetEndMessageId
@@ -2201,6 +2201,42 @@ export interface PendingPiCompactionMarker {
 	tokensBefore: number;
 	summary: string;
 	publishedAt: number;
+	/** Native compaction fence generation captured by the producer. Legacy markers omit it and resolve to 0. */
+	generation?: number;
+}
+
+export interface NativeCompactionFence {
+	generation: number;
+	active: boolean;
+}
+
+export function getNativeCompactionFence(db: Database, sessionId: string): NativeCompactionFence {
+	ensureSessionMetaRow(db, sessionId);
+	const row = db.prepare("SELECT native_compaction_generation, native_compaction_active FROM session_meta WHERE session_id = ?")
+		.get(sessionId) as { native_compaction_generation?: number | null; native_compaction_active?: number | null };
+	return { generation: Math.max(0, Math.floor(row.native_compaction_generation ?? 0)), active: (row.native_compaction_active ?? 0) !== 0 };
+}
+
+/** Atomically opens a native-compaction fence and discards any staged Pi marker. */
+export function beginNativeCompactionFence(db: Database, sessionId: string): number {
+	ensureSessionMetaRow(db, sessionId);
+	let generation = 0;
+	db.transaction(() => {
+		const row = db.prepare("SELECT native_compaction_generation FROM session_meta WHERE session_id = ?").get(sessionId) as { native_compaction_generation?: number | null };
+		generation = Math.max(0, Math.floor(row?.native_compaction_generation ?? 0)) + 1;
+		db.prepare("UPDATE session_meta SET native_compaction_generation = ?, native_compaction_active = 1, pending_pi_compaction_marker_state = NULL WHERE session_id = ?").run(generation, sessionId);
+	})();
+	return generation;
+}
+
+export function endNativeCompactionFence(db: Database, sessionId: string): void {
+	ensureSessionMetaRow(db, sessionId);
+	db.prepare("UPDATE session_meta SET native_compaction_active = 0 WHERE session_id = ?").run(sessionId);
+}
+
+export function isNativeCompactionFenceAdmissible(db: Database, sessionId: string, generation: number): boolean {
+	const fence = getNativeCompactionFence(db, sessionId);
+	return !fence.active && fence.generation === generation;
 }
 
 function isPendingPiCompactionMarker(value: unknown): value is PendingPiCompactionMarker {
@@ -2212,7 +2248,8 @@ function isPendingPiCompactionMarker(value: unknown): value is PendingPiCompacti
 		typeof (value as { ordinal?: unknown }).ordinal === "number" &&
 		typeof (value as { tokensBefore?: unknown }).tokensBefore === "number" &&
 		typeof (value as { summary?: unknown }).summary === "string" &&
-		typeof (value as { publishedAt?: unknown }).publishedAt === "number"
+		typeof (value as { publishedAt?: unknown }).publishedAt === "number" &&
+		((value as { generation?: unknown }).generation === undefined || typeof (value as { generation?: unknown }).generation === "number")
 	);
 }
 
@@ -2230,8 +2267,9 @@ export function getPendingPiCompactionMarkerState(
 	try {
 		const parsed = JSON.parse(raw);
 		if (isPendingPiCompactionMarker(parsed)) {
-			return parsed;
+			return { ...parsed, generation: typeof parsed.generation === "number" ? parsed.generation : 0 };
 		}
+		// Fall through to clear malformed durable state below.
 	} catch {
 		// Fall through to clear malformed durable state below.
 	}
@@ -2251,6 +2289,30 @@ export function setPendingPiCompactionMarkerState(
 	db.prepare(
 		"UPDATE session_meta SET pending_pi_compaction_marker_state = ? WHERE session_id = ?",
 	).run(blob, sessionId);
+}
+/**
+ * Stage a marker only when the captured fence generation is still current and
+ * no native compaction is active. The predicate and write share one SQLite
+ * write transaction, preventing a fence from racing the publication.
+ */
+export function stagePendingPiCompactionMarkerIfAdmissible(
+	db: Database,
+	sessionId: string,
+	marker: PendingPiCompactionMarker,
+	generation: number,
+): boolean {
+	ensureSessionMetaRow(db, sessionId);
+	const blob = stableStringify({ ...marker, generation });
+	const result = db
+		.prepare(
+			`UPDATE session_meta
+			 SET pending_pi_compaction_marker_state = ?
+			 WHERE session_id = ?
+			   AND native_compaction_active = 0
+			   AND native_compaction_generation = ?`,
+		)
+		.run(blob, sessionId, generation);
+	return result.changes > 0;
 }
 
 export function clearPendingPiCompactionMarkerStateIf(
@@ -2375,9 +2437,9 @@ export function getSessionWorkMetrics(
 	const row = db
 		.prepare("SELECT new_work_tokens, total_input_tokens FROM session_meta WHERE session_id = ?")
 		.get(sessionId) as {
-		new_work_tokens?: number | null | undefined;
-		total_input_tokens?: number | null | undefined;
-	} | null;
+			new_work_tokens?: number | null | undefined;
+			total_input_tokens?: number | null | undefined;
+		} | null;
 	return {
 		newWorkTokens: typeof row?.new_work_tokens === "number" ? row.new_work_tokens : 0,
 		totalInputTokens: typeof row?.total_input_tokens === "number" ? row.total_input_tokens : 0,

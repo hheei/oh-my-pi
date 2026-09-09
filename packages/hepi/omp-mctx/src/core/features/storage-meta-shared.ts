@@ -24,6 +24,10 @@ export interface SessionMetaRow {
 	system_prompt_tokens: number;
 	conversation_tokens: number;
 	tool_call_tokens: number;
+	recall_tokens: number | null;
+	token_attribution_revision: string | null;
+	token_attribution_model_key: string | null;
+	token_attribution_updated_at: number | null;
 	cleared_reasoning_through_tag: number;
 	tool_reclaim_watermark: number | null;
 	cached_m0_bytes: Buffer | Uint8Array | null;
@@ -59,7 +63,8 @@ export interface SessionMetaRow {
 	upgrade_reminded_at: number | null;
 	upgrade_reminder_last_sent_at: number | null;
 	upgrade_reminder_count: number | null;
-	pi_stable_id_scheme: number | null;
+	native_compaction_generation: number | null;
+	native_compaction_active: number | null;
 }
 
 export const SESSION_META_SELECT_COLUMNS = [
@@ -81,6 +86,10 @@ export const SESSION_META_SELECT_COLUMNS = [
 	"system_prompt_tokens",
 	"conversation_tokens",
 	"tool_call_tokens",
+	"recall_tokens",
+	"token_attribution_revision",
+	"token_attribution_model_key",
+	"token_attribution_updated_at",
 	"cleared_reasoning_through_tag",
 	"tool_reclaim_watermark",
 	"cached_m0_bytes",
@@ -117,6 +126,8 @@ export const SESSION_META_SELECT_COLUMNS = [
 	"upgrade_reminder_last_sent_at",
 	"upgrade_reminder_count",
 	"pi_stable_id_scheme",
+	"native_compaction_generation",
+	"native_compaction_active",
 ] as const;
 
 export const META_COLUMNS: Record<string, string> = {
@@ -137,6 +148,10 @@ export const META_COLUMNS: Record<string, string> = {
 	systemPromptTokens: "system_prompt_tokens",
 	conversationTokens: "conversation_tokens",
 	toolCallTokens: "tool_call_tokens",
+	recallTokens: "recall_tokens",
+	tokenAttributionRevision: "token_attribution_revision",
+	tokenAttributionModelKey: "token_attribution_model_key",
+	tokenAttributionUpdatedAt: "token_attribution_updated_at",
 	clearedReasoningThroughTag: "cleared_reasoning_through_tag",
 	toolReclaimWatermark: "tool_reclaim_watermark",
 	cachedM0Bytes: "cached_m0_bytes",
@@ -175,7 +190,34 @@ export const META_COLUMNS: Record<string, string> = {
 	piStableIdScheme: "pi_stable_id_scheme",
 };
 
-export const BOOLEAN_META_KEYS = new Set(["isSubagent", "compartmentInProgress", "cacheAlertSent"]);
+export const BOOLEAN_META_KEYS: Record<string, true> = {
+	isSubagent: true,
+	cacheAlertSent: true,
+	compartmentInProgress: true,
+};
+
+export function ensureStatusTokenAttributionColumns(db: Database): void {
+	const rows = db.prepare("PRAGMA table_info(session_meta)").all() as Array<{ name?: string }>;
+	const columns = new Set(rows.map(row => row.name));
+	if (!columns.has("recall_tokens")) {
+		db.exec("ALTER TABLE session_meta ADD COLUMN recall_tokens INTEGER NOT NULL DEFAULT 0");
+	}
+	if (!columns.has("token_attribution_revision")) {
+		db.exec("ALTER TABLE session_meta ADD COLUMN token_attribution_revision TEXT");
+	}
+	if (!columns.has("token_attribution_model_key")) {
+		db.exec("ALTER TABLE session_meta ADD COLUMN token_attribution_model_key TEXT");
+	}
+	if (!columns.has("token_attribution_updated_at")) {
+		db.exec("ALTER TABLE session_meta ADD COLUMN token_attribution_updated_at INTEGER");
+	}
+	if (!columns.has("native_compaction_generation")) {
+		db.exec("ALTER TABLE session_meta ADD COLUMN native_compaction_generation INTEGER NOT NULL DEFAULT 0");
+	}
+	if (!columns.has("native_compaction_active")) {
+		db.exec("ALTER TABLE session_meta ADD COLUMN native_compaction_active INTEGER NOT NULL DEFAULT 0");
+	}
+}
 
 function ensureSessionFactsVersionColumn(db: Database): void {
 	const rows = db.prepare("PRAGMA table_info(session_meta)").all() as Array<{ name?: string }>;
@@ -260,6 +302,10 @@ export function isSessionMetaRow(row: unknown): row is SessionMetaRow {
 		isNumberOrNull(r.system_prompt_tokens) &&
 		isNumberOrNull(r.conversation_tokens) &&
 		isNumberOrNull(r.tool_call_tokens) &&
+		isNumberOrNull(r.recall_tokens) &&
+		isStringOrNull(r.token_attribution_revision) &&
+		isStringOrNull(r.token_attribution_model_key) &&
+		isNumberOrNull(r.token_attribution_updated_at) &&
 		isNumberOrNull(r.cleared_reasoning_through_tag) &&
 		isBlobOrNull(r.cached_m0_bytes) &&
 		isStringOrNull(r.cached_m0_mural_data_url) &&
@@ -317,6 +363,10 @@ export function getDefaultSessionMeta(sessionId: string): SessionMeta {
 		systemPromptTokens: 0,
 		conversationTokens: 0,
 		toolCallTokens: 0,
+		recallTokens: 0,
+		tokenAttributionRevision: null,
+		tokenAttributionModelKey: null,
+		tokenAttributionUpdatedAt: null,
 		clearedReasoningThroughTag: 0,
 		toolReclaimWatermark: 0,
 		cachedM0Bytes: null,
@@ -434,6 +484,10 @@ export function toSessionMeta(row: SessionMetaRow): SessionMeta {
 		systemPromptTokens: numOrZero(row.system_prompt_tokens),
 		conversationTokens: numOrZero(row.conversation_tokens),
 		toolCallTokens: numOrZero(row.tool_call_tokens),
+		recallTokens: numOrZero(row.recall_tokens),
+		tokenAttributionRevision: stringOrNull(row.token_attribution_revision),
+		tokenAttributionModelKey: stringOrNull(row.token_attribution_model_key),
+		tokenAttributionUpdatedAt: numOrNull(row.token_attribution_updated_at),
 		clearedReasoningThroughTag: numOrZero(row.cleared_reasoning_through_tag),
 		toolReclaimWatermark: numOrZero(row.tool_reclaim_watermark),
 		cachedM0Bytes: toBufferOrNull(row.cached_m0_bytes),

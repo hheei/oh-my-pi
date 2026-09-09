@@ -1,42 +1,11 @@
 /**
- * Per-message conversation and tool-call token accounting for Pi.
- * token accounting in `transform.ts:996-1124`.
+ * Per-message semantic token accounting for Pi's final context projection.
  *
- * Walks the post-compaction Pi `event.messages` array (same view the LLM
- * receives on the wire) and partitions tokens into two buckets:
- *
- *   - `conversation` — text/thinking/image content the user/agent
- *     authored or read.
- *   - `toolCall` — tool invocation arguments and tool results — the
- *     mechanical tool I/O that compaction can compress.
- *
- * The result is persisted to `session_meta.{conversation_tokens,tool_call_tokens}`
- * so `/ctx-status` and the dashboard can render an accurate breakdown
- * bar that sums to the wire `inputTokens` (give or take provider
- * tokenizer drift).
- *
- * IMPORTANT: this walks the AFTER-tagging, AFTER-injection, AFTER-strip
- * Pi message array — i.e. exactly what the LLM sees. Sentinels for
- * dropped tags (`[dropped §N§]`) are tiny and tokenize to ~3 tokens
- * each, which correctly reflects what's on the wire.
- *
- * Stable message ids use a guarded cache: every token-relevant field must still
- * match exactly. This retains correctness when tagging, drops, or historian
- * publication changes an old message while avoiding repeated BPE work and
- * serialization of fields the counter ignores.
- * Synthetic injection messages are deliberately re-counted on every pass.
- *
- * Uses Pi part shapes.
- * Pi part shapes:
- *   - PiTextContent (user/assistant/toolResult) → conversation
- *   - PiThinkingContent (assistant) → conversation (incl. signature)
- *   - PiImageContent (user/toolResult) → conversation (visual tokens)
- *   - PiToolCall (assistant) → toolCall (name + JSON arguments)
- *   - PiToolResult content text → toolCall (the bulky result body)
- *
- * Tool definitions (the schemas Pi sends in the separate `tools` field
- * of the request) are NOT counted here. They're computed at status-
- * dialog render time from `pi.getAllTools()`.
+ * Uses the caller-supplied active-model tokenizer when present. Immutable
+ * Recall Event identities are supplied by the ledger's active-branch query;
+ * no message content, source label, or ID prefix participates in recall
+ * classification. Tool definitions are deliberately excluded because Pi sends
+ * them separately and status measures that observable prefix on its own.
  */
 
 import { estimateTokens } from "#core/hooks/read-session-formatting";
@@ -44,6 +13,7 @@ import { estimateTokens } from "#core/hooks/read-session-formatting";
 export interface PiMessageTokenCounts {
 	conversation: number;
 	toolCall: number;
+	recall: number;
 }
 
 export interface PiMessageTokenCacheEntry {
@@ -54,6 +24,10 @@ export interface PiMessageTokenCacheEntry {
 export interface TokenizePiMessagesOptions {
 	cache: Map<string, PiMessageTokenCacheEntry>;
 	stableId: (message: object) => string | undefined;
+	/** The active kernel model's public tokenizer; omit only for legacy callers. */
+	countTokens?: ((text: string) => number) | undefined;
+	/** Exact immutable Recall Event identities admitted on the active projection branch. */
+	recallEventIds?: ReadonlySet<string> | undefined;
 	onTiming?:
 		| ((phase: "cacheValidation" | "bpe" | "cachePrune", elapsedMs: number) => void)
 		| undefined;
@@ -72,11 +46,11 @@ interface MaybePart {
 }
 
 interface MaybeMessage {
+	id?: unknown;
 	role?: string | undefined;
 	content?: unknown | undefined;
 	toolCallId?: string | undefined;
 }
-
 /**
  * Compute conversation + tool-call token totals for a Pi message array.
  *
@@ -92,6 +66,8 @@ export function tokenizePiMessages(
 ): PiMessageTokenCounts {
 	let conversation = 0;
 	let toolCall = 0;
+	let recall = 0;
+	const countTokens = options?.countTokens ?? estimateTokens;
 	let cacheValidationMs = 0;
 	let bpeMs = 0;
 	const liveIds = options ? new Set<string>() : undefined;
@@ -105,13 +81,15 @@ export function tokenizePiMessages(
 		// prototypes and toJSON hooks must take the uncached path.
 		const stableId =
 			resolvedStableId !== undefined && isTokenCacheSafeMessage(raw) ? resolvedStableId : undefined;
-		const fingerprint = stableId === undefined ? null : buildTokenCacheFingerprint(raw);
+		const fingerprint =
+			stableId === undefined ? null : buildTokenCacheFingerprint(raw, options?.recallEventIds);
 		if (stableId !== undefined && fingerprint !== null) {
 			liveIds?.add(stableId);
 			const cached = options?.cache.get(stableId);
 			if (cached && tokenCacheFingerprintsEqual(cached.fingerprint, fingerprint)) {
 				conversation += cached.counts.conversation;
 				toolCall += cached.counts.toolCall;
+				recall += cached.counts.recall;
 				cacheValidationMs += performance.now() - cacheValidationStart;
 				continue;
 			}
@@ -120,16 +98,23 @@ export function tokenizePiMessages(
 		const bpeStart = options?.onTiming ? performance.now() : 0;
 		const beforeConversation = conversation;
 		const beforeToolCall = toolCall;
+		const beforeRecall = recall;
 		try {
-			const msg = raw as MaybeMessage;
+			const msg = raw as MaybeMessage & { id?: unknown };
 			const content = msg.content;
+			const isRecall =
+				typeof msg.id === "string" && options?.recallEventIds?.has(msg.id) === true;
+			const addConversation = (text: string) => {
+				if (isRecall) recall += countTokens(text);
+				else conversation += countTokens(text);
+			};
 
 			// User/Assistant: content is array of PiTextContent | PiImageContent
 			// | PiThinkingContent | PiToolCall (or a plain string for user
 			// messages — Pi allows that shape too).
 			if (msg.role === "user" || msg.role === "assistant") {
 				if (typeof content === "string") {
-					conversation += estimateTokens(content);
+					addConversation(content);
 					continue;
 				}
 				if (!Array.isArray(content)) continue;
@@ -138,32 +123,22 @@ export function tokenizePiMessages(
 					const p = part as MaybePart;
 					switch (p.type) {
 						case "text":
-							if (typeof p.text === "string") conversation += estimateTokens(p.text);
-							if (typeof p.textSignature === "string")
-								conversation += estimateTokens(p.textSignature);
+							if (typeof p.text === "string") addConversation(p.text);
+							if (typeof p.textSignature === "string") addConversation(p.textSignature);
 							break;
 						case "thinking":
-							if (typeof p.thinking === "string") conversation += estimateTokens(p.thinking);
-							if (typeof p.thinkingSignature === "string")
-								conversation += estimateTokens(p.thinkingSignature);
+							if (typeof p.thinking === "string") addConversation(p.thinking);
+							if (typeof p.thinkingSignature === "string") addConversation(p.thinkingSignature);
 							break;
 						case "image":
-							// Pi image content is base64. Anthropic-style visual
-							// token estimate would need width/height, which Pi
-							// doesn't expose at this layer. Use the fixed
-							// fallback (1200 tokens). It over-estimates small
-							// thumbnails, under-estimates 4K screenshots, but is
-							// stable across renders.
-							conversation += 1200;
+							if (isRecall) recall += 1200;
+							else conversation += 1200;
 							break;
 						case "toolCall":
-							// Tool invocation: name + JSON-serialized arguments.
-							// Uses the normalized args payload.
-							if (typeof p.name === "string") toolCall += estimateTokens(p.name);
+							if (typeof p.name === "string") toolCall += countTokens(p.name);
 							if (p.arguments !== undefined) {
-								const s =
-									typeof p.arguments === "string" ? p.arguments : safeJsonStringify(p.arguments);
-								if (s) toolCall += estimateTokens(s);
+								const s = typeof p.arguments === "string" ? p.arguments : safeJsonStringify(p.arguments);
+								if (s) toolCall += countTokens(s);
 							}
 							break;
 					}
@@ -171,23 +146,17 @@ export function tokenizePiMessages(
 				continue;
 			}
 
-			// ToolResult: top-level content is the bulky output body. This is
-			// the LARGER of the two halves of a tool tag (args ~58 bytes vs
-			// result ~4KB on a typical `read`), so it dominates the bucket.
 			if (msg.role === "toolResult") {
 				if (typeof content === "string") {
-					toolCall += estimateTokens(content);
+					toolCall += countTokens(content);
 					continue;
 				}
 				if (!Array.isArray(content)) continue;
 				for (const part of content) {
 					if (!part || typeof part !== "object") continue;
 					const p = part as MaybePart;
-					if (p.type === "text" && typeof p.text === "string") {
-						toolCall += estimateTokens(p.text);
-					} else if (p.type === "image") {
-						toolCall += 1200;
-					}
+					if (p.type === "text" && typeof p.text === "string") toolCall += countTokens(p.text);
+					else if (p.type === "image") toolCall += 1200;
 				}
 			}
 		} finally {
@@ -198,6 +167,7 @@ export function tokenizePiMessages(
 					counts: {
 						conversation: conversation - beforeConversation,
 						toolCall: toolCall - beforeToolCall,
+						recall: recall - beforeRecall,
 					},
 				});
 			}
@@ -213,13 +183,18 @@ export function tokenizePiMessages(
 	}
 	options?.onTiming?.("cacheValidation", cacheValidationMs);
 	options?.onTiming?.("bpe", bpeMs);
-	return { conversation, toolCall };
+	return { conversation, toolCall, recall };
 }
 
-function buildTokenCacheFingerprint(value: object): readonly (string | null)[] {
+function buildTokenCacheFingerprint(
+	value: object,
+	recallEventIds?: ReadonlySet<string>,
+): readonly (string | null)[] {
 	const message = value as MaybeMessage;
 	const role = typeof message.role === "string" ? message.role : null;
-	const fingerprint: (string | null)[] = [role];
+	const messageId = message.id;
+	const recallClass = typeof messageId === "string" && recallEventIds?.has(messageId) === true ? "recall" : "conversation";
+	const fingerprint: (string | null)[] = [role, recallClass];
 	if (role !== "user" && role !== "assistant" && role !== "toolResult") {
 		return fingerprint;
 	}

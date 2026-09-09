@@ -199,6 +199,7 @@ export {
 	setNoteLastReadAt,
 	setPendingCompactionMarkerState,
 	setPendingPiCompactionMarkerState,
+	stagePendingPiCompactionMarkerIfAdmissible,
 	setPersistedReasoningWatermark,
 	setSessionWorkMetrics,
 	setStrippedPlaceholderIds,

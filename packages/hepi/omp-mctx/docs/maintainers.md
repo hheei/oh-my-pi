@@ -1,7 +1,7 @@
 # Maintainers
 
-Host layout, lineage, and gaps that are not part of the user-facing AgentMemory
-story. Product behavior: [features.md](features.md). Wiring:
+Host layout, lineage, and maintenance notes for the AgentMemory integration.
+Product behavior: [features.md](features.md). Wiring:
 [implementation.md](implementation.md).
 
 ## Host
@@ -26,55 +26,51 @@ story. Product behavior: [features.md](features.md). Wiring:
 Durable architectural decisions: `docs/adr/0010-mctx-sole-agentmemory-bridge.md`
 in the repo root. Glossary: root `CONTEXT.md`.
 
-## Lineage
+## Capability matrix
 
-Three-way merge, not a v0.40.1 fork (ADR-0002):
+| Area | Current state |
+| --- | --- |
+| Window, Historian, session-history, status | Active when the plugin is enabled; Historian-dependent work also needs `historianModel`. |
+| AgentMemory bridge, capture, tools, recall | Optional and controlled by the public `agentmemory.*` settings. |
+| Legacy Dreamer, automatic-search, git indexing, embeddings, local durable memory | Retained in source or schema for compatibility, but disabled in the current OMP integration. |
+| Project-docs and user-profile injection | Disabled by the OMP host wiring. Do not document as active behavior without changing that integration. |
+| `/handoff` | Not migrated or registered. |
 
-1. HEPI `packages/pi-mctx` (fail-closed SQLite + in-process latch)
-2. Host overlay from cortexkit `packages/pi-plugin@0.40.1`
-3. Mapped `src/core` cherry-picks from pin `7dcd2e5726a1466126b2eea460482cca2b53283b`
-   through `v0.40.1` (`a239835e`)
+The published manifest is the supported settings surface. Runtime-recognized
+advanced keys documented in the README are not automatically public API.
+Configuration is loaded at extension startup; `/reload` is required after a
+settings change. Keep this distinction when adding a new setting or changing
+the manifest.
 
-Do **not** copy official `packages/pi-plugin/src` over `src/core`.
+## Lineage and portability
 
-## Remaining gaps
+The package is an OMP adaptation assembled from the HEPI mctx implementation,
+the CortexKit host overlay, and selected upstream history. It is not a
+drop-in copy of any one upstream package. Keep the adaptation boundary narrow:
+host-specific lifecycle wiring belongs in the OMP integration layer, while
+Window, projection, and recovery behavior remains in the mctx-owned modules.
 
-**Intentional HEPI rewrite (do not graft CortexKit machinery):**
+When comparing with upstream, preserve the HEPI-specific nudge and
+fail-closed behavior, and do not reintroduce host-only walkers, migration
+lanes, or command handlers that are not part of OMP. Validate changes against
+the current OMP extension API rather than copying upstream files wholesale.
 
-- Nudge cadence: `lastLevel` + `channel1TurnsSinceNudge`. Not CortexKit
-  `realUserTurnCount` / `lastOrdinal` / `shouldUseStickyChannel1Reminder` /
-  `tail-hygiene-walk` (`bc7862f`, `656ab0f`, `c0b060b`).
-- `5f031cd` copy is HEPI-adapted (“Housekeeping, not a crisis”) with
-  `usableTokens`; not byte-for-byte `usableWindow` ratio + sticky ordinal.
-- `ee3c812` `agentDropsAppliedThisPass` is the CortexKit queued-drop hygiene
-  bit; HEPI has no walker, so the field is absent.
+### Recovery implementation
 
-**Host / missing-file skip:**
+- LKG capture/replay is on the Pi `context` handler via `lkg-pi.ts`; keep
+  `AgentMessage` and `MessageLike` conversions explicit.
+- `RawFallbackContextLimitError` is intentionally loud. A failed transform
+  must not silently send an over-limit original prompt.
+- Do not delete durable session rows on compaction, session switch, or
+  shutdown. These are reversible boundaries; process-local caches are cleared
+  separately.
+- Native compaction while mctx compaction is off invalidates cached m[0]/m[1]
+  and relies on the next transform or restart to rebuild alignment.
+### Operational notes
 
-- `1b7648a`: Rust transform + audit scripts only (not a TS nudge rewrite).
-- `efa6ee2`: Rust-only; TS already keeps real tool-argument keys.
-- No `command-handler.ts` (`975e450` sinkless TUI), `storage-session-tables.ts`
-  (`978ea89` / `746963e`), `project-security.ts` (`d45749c`).
-
-**Mapped recovery now in this package:**
-
-- LKG capture/replay is on the Pi `context` handler via `lkg-pi.ts`
-  (`piMessagesToLkg` / `lkgMessagesToPi`). Do not cast `AgentMessage` to
-  `MessageLike`. Slots persist in `lkg_slots`.
-- `RawFallbackContextLimitError` is a loud abort: rethrown, and thrown when a
-  failed transform would otherwise fall through with an original prompt
-  estimated above the resolved context limit.
-
-**Inapplicable (not a remaining port):**
-
-- `714bc4c` migration-blocker process evidence. OMP does not keep a
-  multi-process schema-migration lane; `FailClosedReason` is only
-  `storage_failure`.
-
-**Known AgentMemory follow-ups (not missing ticket work):**
-
-- Restoration after privacy withdrawal is a new epoch; the store does not
-  resurrect a withdrawn head.
-- `gcUnreachableRecall` deletes eligible events, not unused epoch rows.
-- This package does not ship an agentmemory Docker Compose file. Use an
+- Privacy withdrawal starts a new projection epoch; a withdrawn head is not
+  eligible for LKG recovery.
+- Recall garbage collection removes eligible unreachable events, not epoch
+  rows that remain part of the lineage.
+- The package does not ship an AgentMemory Docker Compose file; use an
   unmodified upstream service.

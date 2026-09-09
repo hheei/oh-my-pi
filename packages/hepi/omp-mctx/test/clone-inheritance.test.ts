@@ -9,6 +9,7 @@ import {
 	getSourceContents,
 	getTagsBySession,
 } from "#core/features/storage";
+import { getPendingPiCompactionMarkerState } from "#core/features/storage-meta-persisted";
 import { replayCavemanCompression } from "#core/hooks/caveman-cleanup";
 import type { TagTarget } from "#core/hooks/tag-messages";
 import type { Database } from "#core/shared/sqlite";
@@ -274,7 +275,7 @@ describe("Pi clone state inheritance", () => {
 		).toBeNull();
 	});
 
-	it("migrates a newer pending marker beyond a copied compaction cut", () => {
+	it("does not migrate a newer pending marker into a different session branch", () => {
 		const database = db();
 		seedCompartment(database, {
 			sequence: 1,
@@ -294,24 +295,11 @@ describe("Pi clone state inheritance", () => {
 			assistant("a2"),
 		]);
 
-		expect(result.pendingMarkerMigrated).toBe(true);
-		const marker = JSON.parse(
-			(
-				database
-					.prepare(
-						"SELECT pending_pi_compaction_marker_state AS marker FROM session_meta WHERE session_id = ?",
-					)
-					.get("clone") as { marker: string }
-			).marker,
-		);
-		expect(marker).toMatchObject({
-			firstKeptEntryId: "u2",
-			endMessageId: "a2",
-			ordinal: 4,
-		});
+		expect(result.pendingMarkerMigrated).toBe(false);
+		expect(getPendingPiCompactionMarkerState(database, "clone")).toBeNull();
 	});
 
-	it("migrates an applicable pending marker when the clone has no compaction entry", () => {
+	it("does not migrate a pending marker when the clone has no compaction entry", () => {
 		const database = db();
 		seedCompartment(database, { sequence: 1, startId: "u1", endId: "a1" });
 		seedMeta(database, {
@@ -320,7 +308,7 @@ describe("Pi clone state inheritance", () => {
 
 		const result = copyWithEntries(database, [user("u1"), assistant("a1")]);
 
-		expect(result.pendingMarkerMigrated).toBe(true);
+		expect(result.pendingMarkerMigrated).toBe(false);
 	});
 
 	it("drops a pending marker that references outside the copied prefix", () => {
@@ -532,7 +520,7 @@ describe("Pi clone state inheritance", () => {
 		expect(await readPiSessionIdFromFile(file)).toBe("source-id");
 	});
 
-	it("signals a migrated pending marker only after the transaction commits", async () => {
+	it("does not signal a source pending marker for a new session", async () => {
 		const database = db();
 		seedCompartment(database, { sequence: 1, startId: "u1", endId: "a1" });
 		seedMeta(database, {
@@ -542,7 +530,7 @@ describe("Pi clone state inheritance", () => {
 		temporaryDirectories.push(directory);
 		const file = join(directory, "source.jsonl");
 		await writeFile(file, '{"type":"session","id":"source"}\n');
-		let markerVisibleAtSignal = false;
+		let signalCount = 0;
 
 		const result = await handlePiCloneSessionStart(
 			{ reason: "fork", previousSessionFile: file },
@@ -555,21 +543,14 @@ describe("Pi clone state inheritance", () => {
 			{
 				db: database,
 				signalPendingMarker: () => {
-					markerVisibleAtSignal =
-						(
-							database
-								.prepare(
-									"SELECT pending_pi_compaction_marker_state AS marker FROM session_meta WHERE session_id = ?",
-								)
-								.get("clone") as { marker: string | null }
-						).marker !== null;
+					signalCount += 1;
 				},
 				writeLog: () => undefined,
 			},
 		);
 
-		expect(result?.pendingMarkerMigrated).toBe(true);
-		expect(markerVisibleAtSignal).toBe(true);
+		expect(result?.pendingMarkerMigrated).toBe(false);
+		expect(signalCount).toBe(0);
 	});
 
 	it("fails open with one actionable structured log line", async () => {

@@ -36,8 +36,8 @@ export interface LiveSessionState {
 	/**
 	 * Live recomp / session-upgrade progress, keyed by sessionId. Written by the
 	 * RPC recomp/upgrade handlers (via the runner's `onRecompProgress` callback
-	 * plus their own migration/terminal updates) and read by `buildSidebarSnapshot`
-	 * so the TUI sidebar + /ctx-status can show a live progress bar. In-memory
+	 * plus their own migration/terminal updates) and read by the shared status
+	 * snapshot so the TUI and headless output can show live progress. In-memory
 	 * only — a process restart interrupts the recomp anyway.
 	 */
 	recompProgressBySession: Map<string, RecompProgress>;

@@ -13,10 +13,10 @@
  * keys on `toolID` so every hook fire idempotently overwrites its own slot
  * (same tool set on each turn → same key → same measured total).
  *
- * Consumers (RPC sidebar/status handlers) look up the active session's
- * measurement via `getMeasuredToolDefinitionTokens(providerID, modelID,
- * agentName)`. Returns `undefined` when the key has never been measured — the
- * caller is expected to fall back to residual math or show zero.
+ * Status consumers look up the active session's measurement via
+ * `getMeasuredToolDefinitionTokens(providerID, modelID, agentName)`. Returns
+ * `undefined` when the key has never been measured — the caller is expected
+ * to fall back to residual math or show zero.
  *
  * Persistence (v9+): measurements are also written to SQLite so that a
  * plugin restart can repopulate the in-memory map without waiting for the
@@ -98,9 +98,8 @@ export function setDatabase(db: Database): void {
 /**
  * Populate the in-memory measurements map from the
  * `tool_definition_measurements` table. Called once at startup after
- * setDatabase(), before the first sidebar snapshot or status query, so the
- * sidebar's "Tool Defs" segment shows the correct value immediately on
- * restart instead of 0.
+ * setDatabase(), before the first status query, so the Tool Defs segment
+ * shows the correct value immediately on restart instead of 0.
  *
  * Idempotent: re-running over the same DB reapplies the same values; the
  * inner-map key (toolID) ensures duplicates overwrite rather than accumulate.
@@ -219,8 +218,8 @@ export function recordToolDefinition(
 		} catch {
 			// Persistence is best-effort. A SQLITE_BUSY or transient write
 			// failure must not break the live measurement: the in-memory
-			// map already has the new value and the sidebar will display
-			// it correctly until the next plugin restart.
+			// map already has the new value and status will display it correctly
+			// until the next plugin restart.
 			// Drop the cached statement on error — if the DB connection
 			// went bad, recompiling on the next attempt is the safe move.
 			cachedInsertStmt = null;

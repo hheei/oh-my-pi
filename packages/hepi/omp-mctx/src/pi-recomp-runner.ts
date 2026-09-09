@@ -47,24 +47,25 @@ export async function awaitInFlightRecomps(): Promise<void> {
  * cleanup.
  */
 export function spawnPiRecompRun(args: {
- sessionId: string;
- provider: RawMessageProvider;
- work: () => Promise<void>;
+	sessionId: string;
+	provider: RawMessageProvider;
+	work: () => Promise<void>;
 }): void {
- const { sessionId, provider, work } = args;
- const unregister = setRawMessageProvider(sessionId, provider);
- const runPromise = (async () => {
-  try {
-   await work();
-  } catch (err) {
-   sessionLog(
-    sessionId,
-    `pi recomp run failed (detached): ${err instanceof Error ? err.message : String(err)}`,
-   );
-  }
- })().finally(() => {
-  inFlightRecomp.delete(sessionId);
-  unregister();
- });
- inFlightRecomp.set(sessionId, runPromise);
+	const { sessionId, provider, work } = args;
+	const unregister = setRawMessageProvider(sessionId, provider);
+	// Defer work by one microtask so the in-flight map is populated before a
+	// synchronously-resolving test/runtime body can reach its finally cleanup.
+	const runPromise = Promise.resolve()
+		.then(work)
+		.catch(err => {
+			sessionLog(
+				sessionId,
+				`pi recomp run failed (detached): ${err instanceof Error ? err.message : String(err)}`,
+			);
+		})
+		.finally(() => {
+			inFlightRecomp.delete(sessionId);
+			unregister();
+		});
+	inFlightRecomp.set(sessionId, runPromise);
 }

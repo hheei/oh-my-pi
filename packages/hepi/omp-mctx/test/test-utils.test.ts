@@ -173,5 +173,7 @@ export function fakeContext(
 				})),
 		},
 		getContextUsage: () => ({ tokens: 0, percent: 0, contextWindow: 100_000 }),
+		setInterval: (callback: () => void, ms?: number) => setInterval(callback, ms),
+		clearTimer: (timer: Timer) => clearInterval(timer),
 	};
 }

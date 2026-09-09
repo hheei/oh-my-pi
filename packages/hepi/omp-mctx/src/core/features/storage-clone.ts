@@ -281,11 +281,11 @@ export function copySessionStateForClone(
                       WHERE session_id = ? AND tag_id IN (${placeholders})`,
 				)
 				.all(sourceSessionId, ...sourceTagIds) as Array<{
-				tag_id: number;
-				content: string | null;
-				created_at: number | null;
-				harness: string;
-			}>;
+					tag_id: number;
+					content: string | null;
+					created_at: number | null;
+					harness: string;
+				}>;
 			const insertSourceContent = db.prepare(
 				"INSERT INTO source_contents (tag_id, session_id, content, created_at, harness) VALUES (?, ?, ?, ?, ?)",
 			);
@@ -308,11 +308,11 @@ export function copySessionStateForClone(
                       WHERE session_id = ? AND tag_id IN (${placeholders})`,
 				)
 				.all(sourceSessionId, ...sourceTagIds) as Array<{
-				tag_id: number;
-				operation: string | null;
-				queued_at: number | null;
-				harness: string;
-			}>;
+					tag_id: number;
+					operation: string | null;
+					queued_at: number | null;
+					harness: string;
+				}>;
 			const insertPendingOp = db.prepare(
 				"INSERT INTO pending_ops (session_id, tag_id, operation, queued_at, harness) VALUES (?, ?, ?, ?, ?)",
 			);
@@ -339,10 +339,6 @@ export function copySessionStateForClone(
 			)
 			.get(sourceSessionId) as RawSessionMetaRow | undefined;
 		const maxCopiedTag = copiedTagNumbers.reduce((max, value) => Math.max(max, value), 0);
-		const pendingMarker = filter.selectPendingPiMarker(
-			meta?.pending_pi_compaction_marker_state ?? null,
-			copiedCompartments,
-		);
 
 		db.prepare(
 			`INSERT INTO session_meta
@@ -375,7 +371,7 @@ export function copySessionStateForClone(
 			filterIdBlob(meta?.stripped_placeholder_ids ?? null, filter),
 			filterIdBlob(meta?.stale_reduce_stripped_ids ?? null, filter),
 			filterIdBlob(meta?.processed_image_stripped_ids ?? null, filter),
-			pendingMarker,
+			null,
 		);
 
 		const pendingOpsRow = db
@@ -386,7 +382,7 @@ export function copySessionStateForClone(
 			compartmentsCopied: copiedCompartments.length,
 			tagsCopied: copiedTagNumbers.length,
 			pendingOpsCopied: typeof pendingOpsRow?.count === "number" ? pendingOpsRow.count : 0,
-			pendingMarkerMigrated: pendingMarker !== null,
+			pendingMarkerMigrated: false,
 		};
 	});
 }

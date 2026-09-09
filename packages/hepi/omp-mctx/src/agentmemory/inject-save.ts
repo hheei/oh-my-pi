@@ -6,6 +6,7 @@ import { PREVIEW_LIMITS, shortenPath, TRUNCATE_LENGTHS } from "@oh-my-pi/pi-codi
 import { type AgentMemoryClientPort, type RememberInput, type RememberResult } from "./client.ts";
 import { Database, type Database as DatabaseType } from "../core/shared/sqlite";
 import { ensureAgentMemoryOutboxSchema } from "./outbox";
+import { recordAgentMemoryOperation } from "./status";
 
 function safeToolMessage(value: string): string {
 	return truncateToWidth(replaceTabs(shortenPath(value)), PREVIEW_LIMITS.OUTPUT_EXPANDED * TRUNCATE_LENGTHS.LONG);
@@ -207,8 +208,10 @@ export function registerAgentMemoryHealthCommand(pi: ExtensionAPI, client: Agent
 		handler: async (_args, ctx) => {
 			try {
 				const health = await client.health();
+				recordAgentMemoryOperation("health", "success");
 				ctx.ui.notify(`agentmemory: ${safeToolMessage(health.status ?? health.health?.status ?? "ok")}`, "info");
 			} catch (error) {
+				recordAgentMemoryOperation("health", "failure", error);
 				ctx.ui.notify(
 					`agentmemory unavailable: ${safeToolMessage(error instanceof Error ? error.message : String(error))}`,
 					"error",

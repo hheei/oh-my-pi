@@ -47,6 +47,8 @@ const SESSION_META_FALLBACK_SELECTS: Partial<
 	upgrade_reminded_at: "NULL AS upgrade_reminded_at",
 	upgrade_reminder_last_sent_at: "NULL AS upgrade_reminder_last_sent_at",
 	upgrade_reminder_count: "0 AS upgrade_reminder_count",
+	native_compaction_generation: "0 AS native_compaction_generation",
+	native_compaction_active: "0 AS native_compaction_active",
 };
 
 // Per-connection memo of the resolved projection SQL. getOrCreateSessionMeta is
@@ -73,6 +75,14 @@ function getSessionMetaSelectColumns(db: Database): string {
 	}).join(", ");
 	sessionMetaSelectColumnsCache.set(db, projection);
 	return projection;
+}
+
+/** Reads session metadata without creating a row; safe for status/diagnostic paths. */
+export function readSessionMeta(db: Database, sessionId: string): SessionMeta | undefined {
+	const result = db
+		.prepare(`SELECT ${getSessionMetaSelectColumns(db)} FROM session_meta WHERE session_id = ?`)
+		.get(sessionId);
+	return isSessionMetaRow(result) ? toSessionMeta(result) : undefined;
 }
 
 export function getOrCreateSessionMeta(db: Database, sessionId: string): SessionMeta {
@@ -110,7 +120,7 @@ export function updateSessionMeta(
 		) {
 			setClauses.push(`${column} = ?`);
 			values.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength));
-		} else if (BOOLEAN_META_KEYS.has(key)) {
+		} else if (BOOLEAN_META_KEYS[key] === true) {
 			setClauses.push(`${column} = ?`);
 			values.push(value ? 1 : 0);
 		} else if (typeof value === "string" || typeof value === "number") {

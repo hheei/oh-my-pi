@@ -25,6 +25,7 @@
 
 import * as crypto from "node:crypto";
 import type { ContextEvent, ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import { Tokenizer } from "@oh-my-pi/pi-agent-core";
 import type { AgentMemoryClientPort } from "./agentmemory/client";
 import type { TurnTaintStore } from "./agentmemory/inject-save";
 import {
@@ -33,6 +34,7 @@ import {
 	findLatestUserMessage,
 } from "./agentmemory/recall-admission";
 import { presentAdmittedRecall } from "./agentmemory/recall-presentation";
+import { listActiveBranchRecallEvents } from "./agentmemory/recall-ledger";
 import {
 	acquireCompartmentLease,
 	COMPARTMENT_LEASE_RENEWAL_MS,
@@ -378,6 +380,7 @@ function recordSuccessfulTaggedMessageIds(sessionId: string, entryIds: readonly 
 }
 
 const piMessageTokenCacheBySession = new Map<string, Map<string, PiMessageTokenCacheEntry>>();
+const piTokenAccountingModelBySession = new Map<string, string>();
 const piTagTextTokenCacheBySession = new Map<string, Map<string, { text: string; tokenCount: number }>>();
 const piTagToolTokenCacheBySession = new Map<string, Map<string, { text: string; tokenCount: number }>>();
 const piTextIdentitySourceCacheBySession = new Map<string, Map<number, string>>();
@@ -916,6 +919,8 @@ export interface PiContextHandlerOptions {
 	automaticRecallAdmission?: boolean | undefined;
 	/** Direct agentmemory client for automatic recall when Historian is off. */
 	agentMemory?: PiHistorianOptions["agentMemory"];
+	/** Optional public branch identity; omitted public Pi APIs use the main projection branch. */
+	resolveBranchId?: ((ctx: ExtensionContext) => string | undefined) | undefined;
 	agentMemoryTaint?: TurnTaintStore;
 	/**
 	 * Optional auto-search hint wiring. When omitted or disabled, no hint
@@ -935,6 +940,14 @@ export interface PiContextHandlerOptions {
 	/** Allow a session started exactly in the canonical home directory only when user-level configuration enables it. */
 	allowHomeProject?: boolean | undefined;
 	maybeAutoEmbedSession?: ((sessionId: string, projectDir: string, projectIdentity: string) => void) | undefined;
+}
+
+function resolvePiBranchId(options: PiContextHandlerOptions, ctx: ExtensionContext): string {
+	try {
+		return options.resolveBranchId?.(ctx)?.trim() || "main";
+	} catch {
+		return "main";
+	}
 }
 
 /**
@@ -2836,10 +2849,12 @@ export function registerPiContextHandler(pi: ExtensionAPI, baseOptions: PiContex
 								message.role === "tool",
 						);
 					if (latestUser && lastSubstantive?.id === latestUser.id) {
+						const branchId = resolvePiBranchId(options, ctx);
 						const admission = await admitAutomaticRecall({
 							db: options.db,
 							sessionId,
 							messages: recallProjectionMessages,
+							branchId,
 							userEntryAnchor: latestUser.id,
 							query: latestUser.text,
 							scope: {
@@ -2889,6 +2904,49 @@ export function registerPiContextHandler(pi: ExtensionAPI, baseOptions: PiContex
 				}
 			}
 
+			// Persist the exact final projection, after automatic Recall Event insertion.
+			// This is the sole status-accounting seam; errors remain non-fatal to the call.
+			try {
+				const tTokenAccounting = performance.now();
+				const tokenizerModelKey = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "unknown";
+				const tokenizer = new Tokenizer(ctx.model);
+				let tokenCache = piMessageTokenCacheBySession.get(sessionId);
+				if (!tokenCache) {
+					tokenCache = new Map();
+					piMessageTokenCacheBySession.set(sessionId, tokenCache);
+				}
+				if (piTokenAccountingModelBySession.get(sessionId) !== tokenizerModelKey) {
+					tokenCache.clear();
+					piTokenAccountingModelBySession.set(sessionId, tokenizerModelKey);
+				}
+				const branchId = resolvePiBranchId(options, ctx);
+				const activeRecallEventIds = new Set(
+					listActiveBranchRecallEvents(options.db, sessionId, branchId).map(event => event.eventId),
+				);
+				const counts = tokenizePiMessages(outputMessages as unknown[], {
+					cache: tokenCache,
+					stableId: message => result.postCommitEntryIdByRef.get(message),
+					countTokens: text => tokenizer.countTokens(text),
+					recallEventIds: activeRecallEventIds,
+					onTiming: hasPiTransformTimingObserver()
+						? (phase, elapsedMs) => {
+							recordPiTransformTiming({ sessionId, stage: `token:${phase}`, elapsedMs });
+						}
+						: undefined,
+				});
+				const revision = crypto.createHash("sha256").update(JSON.stringify(outputMessages)).digest("hex");
+				updateSessionMeta(options.db, sessionId, {
+					conversationTokens: counts.conversation,
+					toolCallTokens: counts.toolCall,
+					recallTokens: counts.recall,
+					tokenAttributionRevision: revision,
+					tokenAttributionModelKey: tokenizerModelKey,
+					tokenAttributionUpdatedAt: Date.now(),
+				});
+				logTransformTiming(sessionId, "tokenAccounting", tTokenAccounting);
+			} catch (err) {
+				sessionLog(sessionId, `token accounting failed (continuing): ${err instanceof Error ? err.message : String(err)}`);
+			}
 			if (!options.compactionOff) {
 				const projectionMessages = outputMessages.map((message, index) => {
 					const piMessage = message as {
@@ -2922,8 +2980,10 @@ export function registerPiContextHandler(pi: ExtensionAPI, baseOptions: PiContex
 						.filter((value): value is string => typeof value === "string" && value.length > 0)
 						.join("/") ||
 					"unknown";
+				const branchId = resolvePiBranchId(options, ctx);
 				tryPublishContextProjection(options.db, {
 					sessionId,
+					branchId,
 					messages: projectionMessages,
 					contract: {
 						modelDigest,
@@ -4064,7 +4124,7 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 				try {
 					piTtlMs = parseCacheTtl(hardMeta.cacheTtl);
 				} catch {
-					// invalid cache_ttl → 5m default (parity with execute-status)
+					// invalid cache_ttl → 5m default (status snapshot parity)
 				}
 				return {
 					systemHash: typeof hardMeta.systemPromptHash === "string" ? hardMeta.systemPromptHash : "",
@@ -4949,42 +5009,6 @@ async function runPipeline(args: RunPipelineArgs): Promise<RunPipelineResult> {
 
 	const outputMessages = transcript.getOutputMessages();
 
-	// 7. Persist conversation/tool-call token totals for /ctx-status and
-	// the dashboard. Walks the post-everything message array (tagged,
-	// injected, stripped) so the numbers reflect what the LLM actually
-	// receives. Mirrors legacy host's transform.ts:996-1127. Best-effort —
-	// never fail the pipeline on a stats write error.
-	try {
-		const tTokenAccounting = performance.now();
-		let tokenCache = piMessageTokenCacheBySession.get(args.sessionId);
-		if (!tokenCache) {
-			tokenCache = new Map();
-			piMessageTokenCacheBySession.set(args.sessionId, tokenCache);
-		}
-		const counts = tokenizePiMessages(outputMessages as unknown[], {
-			cache: tokenCache,
-			stableId: message => postCommitEntryIdByRef.get(message),
-			onTiming: hasPiTransformTimingObserver()
-				? (phase, elapsedMs) => {
-						recordPiTransformTiming({
-							sessionId: args.sessionId,
-							stage: `token:${phase}`,
-							elapsedMs,
-						});
-					}
-				: undefined,
-		});
-		updateSessionMeta(args.db, args.sessionId, {
-			conversationTokens: counts.conversation,
-			toolCallTokens: counts.toolCall,
-		});
-		logTransformTiming(args.sessionId, "tokenAccounting", tTokenAccounting);
-	} catch (err) {
-		sessionLog(
-			args.sessionId,
-			`token accounting failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
-		);
-	}
 
 	const materialized = injectionResult?.m0Materialized === true;
 	const materializeReason = injectionResult?.m0Reason ?? null;
@@ -5397,6 +5421,7 @@ export function clearContextHandlerSession(sessionId: string): void {
 		taggersBySession.delete(sessionId);
 	}
 	piMessageTokenCacheBySession.delete(sessionId);
+	piTokenAccountingModelBySession.delete(sessionId);
 	piTagTextTokenCacheBySession.delete(sessionId);
 	piTagToolTokenCacheBySession.delete(sessionId);
 	piTextIdentitySourceCacheBySession.delete(sessionId);

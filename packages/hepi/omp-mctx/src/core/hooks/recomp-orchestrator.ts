@@ -188,7 +188,7 @@ export function setRecompTerminal(
 	message: string,
 ): void {
 	const existing = liveSessionState.recompProgressBySession.get(sessionId);
-	liveSessionState.recompProgressBySession.set(sessionId, {
+	const terminal: RecompProgress = {
 		sessionId,
 		// Preserve the flow kind set by setRecompStarting so the terminal entry
 		// keeps "Recomp" vs "Upgrade" labeling.
@@ -201,13 +201,14 @@ export function setRecompTerminal(
 		startedAt: existing?.startedAt ?? Date.now(),
 		updatedAt: Date.now(),
 		message,
-	});
+	};
+	liveSessionState.recompProgressBySession.set(sessionId, terminal);
 	// "done" and the transient "skipped" both auto-clear after a grace period;
 	// "failed" persists until the next run so the reason stays visible.
 	if (phase === "done" || phase === "skipped") {
 		const t = setTimeout(() => {
 			const cur = liveSessionState.recompProgressBySession.get(sessionId);
-			if (cur?.phase === phase) liveSessionState.recompProgressBySession.delete(sessionId);
+			if (cur === terminal) liveSessionState.recompProgressBySession.delete(sessionId);
 		}, RECOMP_DONE_GRACE_MS);
 		(t as { unref?: () => void }).unref?.();
 	}

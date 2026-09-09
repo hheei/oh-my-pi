@@ -83,11 +83,11 @@ export function updateTagByteSize(
 }
 
 /**
- * Per-owning-message token totals for the ACTIVE tags of a session, keyed by
- * the real message id (not the synthetic content id). Both the sidebar
- * breakdown and the protected-tail true-raw measurement index into this by the
- * message ids they already hold (their window / eligible slice), so the result
- * is window-scoped by construction — it never overcounts a still-active tag
+ * Per-owning-message token totals for the active tags of a session, keyed by
+ * the real message id (not the synthetic content id). The status breakdown
+ * and protected-tail true-raw measurement index into this by the message ids
+ * they already hold (their window / eligible slice), so the result is
+ * window-scoped by construction — it never overcounts a still-active tag
  * that has been trimmed out of the live window.
  *
  * Owner derivation:
@@ -107,9 +107,9 @@ export interface MessageTokenTotal {
 	toolCall: number;
 	/**
 	 * Tool OUTPUT tokens only (the ctx_reduce-droppable payload), excluding tool
-	 * input args — this is the "reclaimable" figure the nudge channels gate on,
-	 * matching the legacy `computeTailToolTokens` semantics (which summed
-	 * `state.output`). `toolCall` = this + input args, for the sidebar bucket.
+	 * input args — this is the reclaimable figure the nudge channels gate on,
+	 * matching the legacy `computeTailToolTokens` semantics. `toolCall` includes
+	 * this plus input args.
 	 */
 	toolOutput: number;
 	hasNull: boolean;

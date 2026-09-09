@@ -286,7 +286,7 @@ describe("tokenizePiMessages", () => {
 
 	test("stable-id cache prunes messages outside the live wire", () => {
 		const cache = new Map([
-			["old-entry", { fingerprint: [], counts: { conversation: 0, toolCall: 0 } }],
+		["old-entry", { fingerprint: [], counts: { conversation: 0, toolCall: 0, recall: 0 } }],
 		]);
 		const message = { role: "user", content: "live" };
 		tokenizePiMessages([message], {
@@ -345,5 +345,35 @@ describe("tokenizePiMessages", () => {
 			},
 		]);
 		expect(counts.toolCall).toBeGreaterThan(0);
+	});
+	test("uses supplied model token counter and exact recall event identities", () => {
+		const counts = tokenizePiMessages(
+			[
+				{ id: "recall-committed", role: "user", content: "recalled content" },
+				{ id: "ordinary-user", role: "user", content: "[memory:recall] user-authored text" },
+			],
+			{
+				cache: new Map(),
+				stableId: message => ("id" in message && typeof message.id === "string" ? message.id : undefined),
+				countTokens: text => text.length,
+				recallEventIds: new Set(["recall-committed"]),
+			},
+		);
+		expect(counts.recall).toBe("recalled content".length);
+		expect(counts.conversation).toBe("[memory:recall] user-authored text".length);
+	});
+
+	test("does not classify unreachable recall identities", () => {
+		const counts = tokenizePiMessages(
+			[{ id: "sibling-recall", role: "user", content: "sibling branch content" }],
+			{
+				cache: new Map(),
+				stableId: message => ("id" in message && typeof message.id === "string" ? message.id : undefined),
+				countTokens: text => text.length,
+				recallEventIds: new Set(),
+			},
+		);
+		expect(counts.recall).toBe(0);
+		expect(counts.conversation).toBe("sibling branch content".length);
 	});
 });

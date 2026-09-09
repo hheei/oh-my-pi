@@ -6,7 +6,8 @@ import { AgentMemoryClient, type AgentMemoryClientConfig, type AgentMemoryClient
 import { loadAgentMemorySettings, type AgentMemoryBridgeSettings } from "./config.ts";
 import { createAgentMemoryProjectResolver } from "./project.ts";
 import type { AgentMemoryProjectIdentity } from "./project.ts";
-import { AgentMemorySessionManager, type AgentMemorySessionManagerOptions } from "./session.ts";
+import { AgentMemorySessionManager, type AgentMemorySessionManagerOptions } from "./session";
+import { observeAgentMemoryClient, recordAgentMemoryOperation } from "./status";
 
 export interface AgentMemoryBridgeRuntime {
 	readonly settings: AgentMemoryBridgeSettings;
@@ -29,7 +30,7 @@ export function createAgentMemoryBridgeRuntime(
 	settings: AgentMemoryBridgeSettings = loadAgentMemorySettings(),
 	options: AgentMemoryBridgeRuntimeOptions = {},
 ): AgentMemoryBridgeRuntime {
-	const client =
+	const rawClient =
 		options.client ??
 		new AgentMemoryClient(
 			{
@@ -39,6 +40,7 @@ export function createAgentMemoryBridgeRuntime(
 			} satisfies AgentMemoryClientConfig,
 			options.clientOptions,
 		);
+	const client = observeAgentMemoryClient(rawClient);
 	const resolveIdentity = createAgentMemoryProjectResolver(settings);
 	const sessionOptions: AgentMemorySessionManagerOptions = {
 		client,
@@ -46,6 +48,7 @@ export function createAgentMemoryBridgeRuntime(
 		enabled: () => settings.enabled && settings.capture,
 		onFailure: (operation, error) => {
 			try {
+				recordAgentMemoryOperation(operation, "failure", error);
 				options.pi?.logger.warn("mctx agentmemory bridge request failed", { operation, error: String(error) });
 				if (!options.pi) log(`[magic-context][agentmemory] ${operation} failed`, error);
 			} catch {
@@ -60,6 +63,7 @@ export function createAgentMemoryBridgeRuntime(
 		sessions,
 		onFailure: (operation, error) => {
 			try {
+				recordAgentMemoryOperation(operation, "failure", error);
 				options.pi?.logger.warn("mctx agentmemory capture failed", { operation, error: String(error) });
 				if (!options.pi) log(`[magic-context][agentmemory] ${operation} failed`, error);
 			} catch {

@@ -38,9 +38,30 @@ function suggestionModels(error: unknown): string[] {
 	const suggestions = value.data?.suggestions;
 	return Array.isArray(suggestions)
 		? suggestions
-				.filter((item): item is string => typeof item === "string")
-				.map((item) => (item.includes("/") || !providerID ? item : `${providerID}/${item}`))
+			.filter((item): item is string => typeof item === "string")
+			.map((item) => (item.includes("/") || !providerID ? item : `${providerID}/${item}`))
 		: [];
+}
+
+function retryQueue(fallbackModels: readonly string[] | undefined): (string | undefined)[] {
+	const queue: (string | undefined)[] = [undefined];
+	const seen = new Set<string>();
+	for (const model of fallbackModels ?? []) {
+		if (!modelParts(model).model || seen.has(model)) continue;
+		seen.add(model);
+		queue.push(model);
+	}
+	return queue;
+}
+
+function enqueueSuggestions(queue: (string | undefined)[], index: number, suggestions: readonly string[]): void {
+	const seen = new Set(queue.filter((item): item is string => item !== undefined));
+	const fresh = suggestions.filter(model => {
+		if (seen.has(model)) return false;
+		seen.add(model);
+		return true;
+	});
+	queue.splice(index + 1, 0, ...fresh);
 }
 
 function modelParts(model: string | undefined): Record<string, unknown> {
@@ -66,15 +87,19 @@ async function promptAttempt(
 			options.timeoutMs === undefined
 				? undefined
 				: new Promise<never>((_, reject) => {
-						timer = setTimeout(async () => {
-							const error = new Error(`prompt timed out after ${options.timeoutMs}ms`);
-							error.name = "TimeoutError";
-							reject(error);
-							controller.abort();
-							void client.session.abort?.({ path: args.path }).catch(() => undefined);
-						}, options.timeoutMs);
-					});
-		await ((await timeout) ? Promise.race([prompt, timeout]) : prompt);
+					timer = setTimeout(async () => {
+						const error = new Error(`prompt timed out after ${options.timeoutMs}ms`);
+						error.name = "TimeoutError";
+						reject(error);
+						controller.abort();
+						void client.session.abort?.({ path: args.path }).catch(() => undefined);
+					}, options.timeoutMs);
+				});
+		if (timeout === undefined) {
+			await prompt;
+		} else {
+			await Promise.race([prompt, timeout]);
+		}
 	} catch (error) {
 		if (options.signal?.aborted) throw abortError();
 		throw error;
@@ -89,10 +114,7 @@ export async function promptSyncWithModelSuggestionRetry(
 	args: { body?: Record<string, unknown> } & Record<string, unknown>,
 	options: RetryOptions = {},
 ): Promise<void> {
-	const queue = [
-		undefined,
-		...(options.fallbackModels ?? []).filter((model) => Boolean(modelParts(model).model)),
-	] as (string | undefined)[];
+	const queue = retryQueue(options.fallbackModels);
 	let lastError: unknown;
 	for (let index = 0; index < queue.length; index += 1) {
 		const model = queue[index];
@@ -105,7 +127,7 @@ export async function promptSyncWithModelSuggestionRetry(
 			if (stopRetry(error, options.signal))
 				throw error instanceof Error && options.signal?.aborted ? abortError() : error;
 			const suggestions = suggestionModels(error);
-			if (suggestions.length) queue.splice(index + 1, 0, ...suggestions);
+			enqueueSuggestions(queue, index, suggestions);
 		}
 	}
 	throw lastError ?? new Error("prompt failed");
@@ -121,10 +143,7 @@ export async function promptSyncWithValidatedOutputRetry<Output, Validated>(
 		validateOutput: (output: Output, attempt?: { label: string }) => Validated;
 	},
 ): Promise<{ output: Output; validated: Validated }> {
-	const queue = [
-		undefined,
-		...(options.fallbackModels ?? []).filter((model) => Boolean(modelParts(model).model)),
-	] as (string | undefined)[];
+	const queue = retryQueue(options.fallbackModels);
 	let lastError: unknown;
 	let firstValidationError: unknown;
 	for (let index = 0; index < queue.length; index += 1) {
@@ -148,6 +167,8 @@ export async function promptSyncWithValidatedOutputRetry<Output, Validated>(
 				firstValidationError = error;
 			if (stopRetry(error, options.signal))
 				throw error instanceof Error && options.signal?.aborted ? abortError() : error;
+			const suggestions = suggestionModels(error);
+			enqueueSuggestions(queue, index, suggestions);
 		}
 	}
 	throw firstValidationError ?? lastError ?? new Error(`${options.callContext}: prompt failed`);

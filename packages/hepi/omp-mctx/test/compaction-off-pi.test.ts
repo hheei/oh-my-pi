@@ -4,9 +4,9 @@ import {
 	insertTag,
 	queuePendingOp,
 	setChannel2NudgeState,
-	setPendingPiCompactionMarkerState,
 	updateSessionMeta,
 } from "#core/features/storage";
+import { setPendingPiCompactionMarkerState } from "#core/features/storage-meta-persisted";
 import {
 	getChannel2NudgeState,
 	getCompactionModeRecord,
@@ -16,20 +16,56 @@ import {
 import { closeQuietly } from "#core/shared/sqlite-helpers";
 
 import { commitPiCompactionModeRecord, reconcilePiCompactionMode } from "../src/compaction-off-pi";
-import { handlePiSessionBeforeCompact } from "../src/index";
+import {
+	handlePiSessionBeforeCompact,
+	handlePiSessionCompact,
+} from "../src/index";
+import {
+	consumeDeferredHistoryRefresh,
+	consumeDeferredMaterialization,
+} from "../src/context-handler";
 import { createTestDb } from "./test-utils.test";
 
 describe("Pi compaction-off mode", () => {
-	it("allows native compaction only when compaction-off is selected", async () => {
+	it("allows native compaction in every mode and clears cached m[0]/m[1] first", async () => {
 		const db = createTestDb();
+		const sessionId = "ses-native";
 		try {
-			const ctx = { sessionManager: { getSessionId: () => "ses-native" } };
-			expect(await handlePiSessionBeforeCompact({ db, compactionOff: false, ctx })).toEqual({
-				cancel: true,
-			});
-			// Mutation direction: returning cancel here would prevent Pi from owning
-			// the window and leave an off-mode session with no compactor.
-			expect(await handlePiSessionBeforeCompact({ db, compactionOff: true, ctx })).toBeUndefined();
+			const ctx = { sessionManager: { getSessionId: () => sessionId } };
+			for (const compactionOff of [false, true]) {
+				updateSessionMeta(db, sessionId, {
+					cachedM0Bytes: Buffer.from("cached m0"),
+					cachedM1Bytes: Buffer.from("cached m1"),
+				});
+				db.prepare("UPDATE session_meta SET cached_m0_last_baseline_end_message_id = ? WHERE session_id = ?").run(
+					"stale-boundary",
+					sessionId,
+				);
+				expect(await handlePiSessionBeforeCompact({ db, compactionOff, ctx })).toBeUndefined();
+				expect(
+					db
+						.prepare(
+							"SELECT cached_m0_bytes, cached_m1_bytes, cached_m0_last_baseline_end_message_id FROM session_meta WHERE session_id = ?",
+						)
+						.get(sessionId),
+				).toEqual({ cached_m0_bytes: null, cached_m1_bytes: null, cached_m0_last_baseline_end_message_id: null });
+			}
+		} finally {
+			closeQuietly(db);
+		}
+	});
+
+	it("signals deferred reconciliation idempotently after native compaction", () => {
+		const db = createTestDb();
+		const sessionId = "ses-native-post";
+		try {
+			const ctx = { sessionManager: { getSessionId: () => sessionId } };
+			handlePiSessionCompact({ db, ctx });
+			handlePiSessionCompact({ db, ctx });
+			expect(consumeDeferredHistoryRefresh(sessionId)).toBe(true);
+			expect(consumeDeferredHistoryRefresh(sessionId)).toBe(false);
+			expect(consumeDeferredMaterialization(sessionId)).toBe(true);
+			expect(consumeDeferredMaterialization(sessionId)).toBe(false);
 		} finally {
 			closeQuietly(db);
 		}
@@ -48,6 +84,7 @@ describe("Pi compaction-off mode", () => {
 				tokensBefore: 100,
 				summary: "stale MC compaction",
 				publishedAt: 1,
+				generation: 0,
 			});
 			recordOverflowDetected(db, sessionId, undefined);
 			setChannel2NudgeState(db, sessionId, "pending");

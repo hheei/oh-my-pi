@@ -409,8 +409,8 @@ export function createTagger(): Tagger {
 			// One-time token backfill for legacy rows (written before the token
 			// columns existed). Only fires when the row's token_count is still
 			// NULL, so a populated row never re-tokenizes — this is the single
-			// convergence point that lets both the sidebar and protected-tail
-			// consumers SUM stored counts after at most one cold pass per tag.
+			// convergence point for status and protected-tail consumers to SUM
+			// stored counts after at most one cold pass per tag.
 			if (tokenThunk && tagTokenCountIsNull(db, sessionId, dbExisting)) {
 				try {
 					backfillTagTokenCounts(db, sessionId, dbExisting, tokenThunk());

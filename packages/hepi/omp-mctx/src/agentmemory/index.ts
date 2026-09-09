@@ -12,3 +12,4 @@ export * from "./outbox";
 export * from "./recall-ledger";
 export * from "./recall-admission";
 export * from "./recall-presentation";
+export * from "./status";

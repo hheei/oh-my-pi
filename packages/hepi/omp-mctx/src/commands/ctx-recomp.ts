@@ -5,6 +5,12 @@ import type { ContextDatabase } from "#core/features/storage";
 import { clearEmergencyRecovery, isWrapupInProgress } from "#core/features/storage-meta-persisted";
 import { COMPARTMENT_STRUCTURAL_SYSTEM_PROMPT } from "#core/hooks/compartment-prompt";
 import { executeContextRecompWithResult } from "#core/hooks/compartment-runner";
+import type { LiveSessionState } from "#core/hooks/live-session-state";
+import {
+	extractRecompReason,
+	setRecompStarting,
+	setRecompTerminal,
+} from "#core/hooks/recomp-orchestrator";
 import {
 	type PartialRecompRange,
 	snapRangeToCompartments,
@@ -51,6 +57,7 @@ export interface CtxRecompRuntimeDeps {
 	memoryEnabled: boolean;
 	autoPromote: boolean;
 	compactionOff?: boolean | undefined;
+	liveSessionState?: LiveSessionState;
 }
 
 export interface RegisterCtxRecompDeps extends CtxRecompRuntimeDeps {
@@ -146,6 +153,7 @@ export function registerCtxRecompCommand(pi: ExtensionAPI, deps: RegisterCtxReco
 				return;
 			}
 
+			currentDeps.liveSessionState && setRecompStarting(currentDeps.liveSessionState, sessionId, "Starting recomp…", "recomp");
 			confirmationBySession.delete(sessionId);
 			sendCtxStatusMessage(pi, {
 				title: "/ctx-recomp",
@@ -168,87 +176,73 @@ export function registerCtxRecompCommand(pi: ExtensionAPI, deps: RegisterCtxReco
 				sessionId,
 				provider,
 				work: async () => {
-					const result = await executeContextRecompWithResult(
-						{
-							client: createPiHistorianClient({
-								runner: currentDeps.runner,
-								model: currentDeps.historianModel as string,
-								systemPrompt: withContentLanguageDirective(
-									COMPARTMENT_STRUCTURAL_SYSTEM_PROMPT,
-									currentDeps.language,
-									{ preserveUserQuotes: true },
-								),
-								fallbackModels: currentDeps.historianFallbacks,
-								timeoutMs: currentDeps.historianTimeoutMs,
-								thinkingLevel: currentDeps.historianThinkingLevel,
+					try {
+						const result = await executeContextRecompWithResult(
+							{
+								client: createPiHistorianClient({
+									runner: currentDeps.runner,
+									model: currentDeps.historianModel as string,
+									systemPrompt: withContentLanguageDirective(
+										COMPARTMENT_STRUCTURAL_SYSTEM_PROMPT,
+										currentDeps.language,
+										{ preserveUserQuotes: true },
+									),
+									fallbackModels: currentDeps.historianFallbacks,
+									timeoutMs: currentDeps.historianTimeoutMs,
+									thinkingLevel: currentDeps.historianThinkingLevel,
+									directory: ctx.cwd,
+									accountingSessionId: sessionId,
+									notify: text => sendCtxStatusMessage(pi, { title: "/ctx-recomp", text, level: inferLevel(text) }),
+								}) as never,
+								db: currentDeps.db,
+								sessionId,
+								historianChunkTokens: currentDeps.historianChunkTokens,
 								directory: ctx.cwd,
-								accountingSessionId: sessionId,
-								notify: (text) => {
-									sendCtxStatusMessage(pi, {
-										title: "/ctx-recomp",
-										text,
-										level: inferLevel(text),
-									});
+								historianTimeoutMs: currentDeps.historianTimeoutMs,
+								memoryEnabled: currentDeps.memoryEnabled,
+								autoPromote: currentDeps.autoPromote,
+								ensureProjectRegistered: ensureProjectRegisteredFromPiDirectory,
+								fallbackModels: currentDeps.historianFallbacks,
+								language: currentDeps.language,
+								fallbackModelId: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
+								onRecompProgress: progress => {
+									const state = currentDeps.liveSessionState;
+									if (!state) return;
+									const kind = state.recompProgressBySession.get(sessionId)?.kind ?? "recomp";
+									state.recompProgressBySession.set(sessionId, { ...progress, kind });
 								},
-							}) as never,
-							db: currentDeps.db,
-							sessionId,
-							historianChunkTokens: currentDeps.historianChunkTokens,
-							directory: ctx.cwd,
-							historianTimeoutMs: currentDeps.historianTimeoutMs,
-							memoryEnabled: currentDeps.memoryEnabled,
-							autoPromote: currentDeps.autoPromote,
-							// Embedding substrate: register before the recomp publish
-							// path computes chunk embeddings, else rebuilt rows get
-							// none and drop out of ctx_search semantic results.
-							ensureProjectRegistered: ensureProjectRegisteredFromPiDirectory,
-							// Recomp-runner model chain: configured
-							// fallbacks + the session's own model as last-ditch retry.
-							fallbackModels: currentDeps.historianFallbacks,
-							language: currentDeps.language,
-							fallbackModelId: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
-						},
-						parsed.kind === "partial" ? { range: parsed.range } : {},
-					);
-					if (result.published) {
-						// A successful recomp resolves the overflow that may have armed
-						// needs_emergency_recovery — clear it so the flag stops force-
-						// bumping pressure to 95% every later pass (parity with
-						// Managed recomp leaves detectedContextLimit intact.
-						try {
-							clearEmergencyRecovery(currentDeps.db, sessionId);
-						} catch (recoveryError) {
-							sessionLog(
+							},
+							parsed.kind === "partial" ? { range: parsed.range } : {},
+						);
+						if (result.published) {
+							try {
+								clearEmergencyRecovery(currentDeps.db, sessionId);
+							} catch (recoveryError) {
+								sessionLog(sessionId, `/ctx-recomp: clearEmergencyRecovery failed (continuing): ${describeError(recoveryError).brief}`);
+							}
+							try {
+								stagePiRecompMarker({ db: currentDeps.db, sessionId, ctx });
+							} catch (markerError) {
+								sessionLog(sessionId, `/ctx-recomp: marker staging failed (recomp already published; continuing): ${describeError(markerError).brief}`);
+							}
+							signalPiDeferredHistoryRefresh(sessionId);
+							signalPiDeferredMaterialization(sessionId);
+						}
+						if (currentDeps.liveSessionState) {
+							setRecompTerminal(
+								currentDeps.liveSessionState,
 								sessionId,
-								`/ctx-recomp: clearEmergencyRecovery failed (continuing): ${describeError(recoveryError).brief}`,
+								result.published ? "done" : "skipped",
+								extractRecompReason(result.message),
 							);
 						}
-						// DEFERRED staging (background-safe): stage the native marker
-						// as a pending blob + signal a DEFERRED history refresh so the
-						// next transform pass (at a turn boundary) drains and applies
-						// it. The detached run must NOT apply the marker eagerly
-						// (appendCompaction mutates getBranch immediately, which from a
-						// background task could land mid-turn) nor use the eager
-						// history/materialization signals — those would force a
-						// materialization on whatever pass is running, possibly
-						// mid-turn, busting the cache. Mirrors the background
-						// historian's onPublished (signalPiDeferred*).
-						try {
-							stagePiRecompMarker({ db: currentDeps.db, sessionId, ctx });
-						} catch (markerError) {
-							sessionLog(
-								sessionId,
-								`/ctx-recomp: marker staging failed (recomp already published; continuing): ${describeError(markerError).brief}`,
-							);
+						sendCtxStatusMessage(pi, { title: "/ctx-recomp", text: result.message, level: inferLevel(result.message) });
+					} catch (error) {
+						if (currentDeps.liveSessionState) {
+							setRecompTerminal(currentDeps.liveSessionState, sessionId, "failed", describeError(error).brief);
 						}
-						signalPiDeferredHistoryRefresh(sessionId);
-						signalPiDeferredMaterialization(sessionId);
+						throw error;
 					}
-					sendCtxStatusMessage(pi, {
-						title: "/ctx-recomp",
-						text: result.message,
-						level: inferLevel(result.message),
-					});
 				},
 			});
 		},

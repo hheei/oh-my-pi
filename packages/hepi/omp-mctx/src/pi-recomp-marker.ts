@@ -2,8 +2,9 @@ import { getCompartments } from "#core/features/compartment-storage";
 import {
 	type ContextDatabase,
 	clearPendingPiCompactionMarkerStateIf,
-	setPendingPiCompactionMarkerState,
+	stagePendingPiCompactionMarkerIfAdmissible,
 } from "#core/features/storage";
+import { getNativeCompactionFence } from "#core/features/storage-meta-persisted";
 import { applyDeferredPiCompactionMarker } from "./compaction-marker-manager-pi";
 import { signalPiDeferredHistoryRefresh } from "./context-handler";
 import { buildPiCompactionSummary, findFirstKeptEntryId } from "./pi-historian-runner";
@@ -60,14 +61,17 @@ export function stagePiRecompMarker(args: {
 	}
 	if (!firstKeptEntryId || last.endMessageId.length === 0) return;
 
-	setPendingPiCompactionMarkerState(args.db, args.sessionId, {
+	const generation = getNativeCompactionFence(args.db, args.sessionId).generation;
+	const staged = stagePendingPiCompactionMarkerIfAdmissible(args.db, args.sessionId, {
 		firstKeptEntryId,
 		endMessageId: last.endMessageId,
 		ordinal: last.endMessage,
 		tokensBefore: 0,
 		summary: buildPiCompactionSummary(compartments),
 		publishedAt: Date.now(),
-	});
+		generation,
+	}, generation);
+	if (!staged) return;
 	signalPiDeferredHistoryRefresh(args.sessionId);
 }
 
@@ -104,6 +108,7 @@ export function queueAndApplyPiRecompMarker(args: {
 	}
 	if (!firstKeptEntryId || last.endMessageId.length === 0) return;
 
+	const generation = getNativeCompactionFence(args.db, args.sessionId).generation;
 	const pending = {
 		firstKeptEntryId,
 		endMessageId: last.endMessageId,
@@ -111,9 +116,9 @@ export function queueAndApplyPiRecompMarker(args: {
 		tokensBefore: 0,
 		summary: buildPiCompactionSummary(compartments),
 		publishedAt: Date.now(),
+		generation,
 	};
-
-	setPendingPiCompactionMarkerState(args.db, args.sessionId, pending);
+	if (!stagePendingPiCompactionMarkerIfAdmissible(args.db, args.sessionId, pending, generation)) return;
 	const outcome = applyDeferredPiCompactionMarker(
 		{ db: args.db, appendCompaction, readBranchEntries },
 		args.sessionId,
@@ -132,23 +137,23 @@ function resolvePiAppendCompaction(
 	ctx: unknown,
 ):
 	| ((
-			summary: string,
-			firstKeptEntryId: string,
-			tokensBefore: number,
-			details?: unknown,
-			fromHook?: boolean,
-	  ) => string | undefined)
+		summary: string,
+		firstKeptEntryId: string,
+		tokensBefore: number,
+		details?: unknown,
+		fromHook?: boolean,
+	) => string | undefined)
 	| undefined {
 	const sm = (ctx as { sessionManager?: unknown })?.sessionManager as
 		| {
-				appendCompaction?: (
-					summary: string,
-					firstKeptEntryId: string,
-					tokensBefore: number,
-					details?: unknown,
-					fromHook?: boolean,
-				) => string | undefined;
-		  }
+			appendCompaction?: (
+				summary: string,
+				firstKeptEntryId: string,
+				tokensBefore: number,
+				details?: unknown,
+				fromHook?: boolean,
+			) => string | undefined;
+		}
 		| undefined;
 	if (typeof sm?.appendCompaction !== "function") return undefined;
 	return sm.appendCompaction.bind(sm);

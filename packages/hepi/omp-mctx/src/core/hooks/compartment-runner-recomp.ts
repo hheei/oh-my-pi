@@ -203,9 +203,9 @@ export async function executeContextRecompInternal(deps: CompartmentRunnerDeps):
 			);
 		}
 
-		// ── Live progress (sidebar / status) ────────────────────────────────
+		// ── Live progress (status) ──────────────────────────────────────────
 		// The recomp loop processes raw messages from `offset` up to
-		// `protectedTailStart`; `emitProgress` drives the TUI progress bar.
+		// `protectedTailStart`; `emitProgress` drives the live status panel.
 		// (Outcome LOGGING is done once in executeContextRecompWithResult, which
 		// wraps every return path — previously only lease-loss logged, making a
 		// silently-non-publishing recomp undiagnosable; see dogfood 2026-05-30.)
@@ -354,7 +354,7 @@ export async function executeContextRecompInternal(deps: CompartmentRunnerDeps):
 				notifParams(),
 			);
 			// Live note: a single pass can take 60-90s through the fallback chain;
-			// surface "running historian…" so the sidebar bar isn't frozen.
+			// surface "running historian…" so status does not appear frozen.
 			emitProgress(`Running historian (pass ${passCount + 1})…`);
 
 			const validatedPass = await runValidatedHistorianPass({
@@ -385,7 +385,7 @@ export async function executeContextRecompInternal(deps: CompartmentRunnerDeps):
 						);
 					},
 					onModelFallback: (modelId, index, total) => {
-						// Short model label (drop provider prefix) for the sidebar.
+						// Short model label (drop provider prefix) for status.
 						const short = modelId.includes("/") ? modelId.split("/").pop() : modelId;
 						emitProgress(`Trying fallback ${short} (${index}/${total})…`);
 					},
