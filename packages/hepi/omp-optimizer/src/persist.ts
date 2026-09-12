@@ -7,14 +7,23 @@ export const PLUGIN_NAME = "@hheei/omp-optimizer";
 
 type OptimizerFileConfig = Partial<Record<OptimizerTool, string>>;
 
-const OPTIMIZER_TOOLS: readonly OptimizerTool[] = ["caveman", "rtk", "ponytail", "t2s", "edit-guard"];
+const OPTIMIZER_TOOLS: readonly OptimizerTool[] = [
+	"caveman",
+	"rtk",
+	"ponytail",
+	"t2s",
+	"edit-guard",
+];
 
 export interface OptimizerStore {
 	load(tool: OptimizerTool): Promise<string | undefined>;
 	save(tool: OptimizerTool, value: string): Promise<void>;
 }
 
-type LockfileSnapshot = { kind: "missing" } | { kind: "ok"; raw: Record<string, unknown> } | { kind: "unusable" };
+type LockfileSnapshot =
+	| { kind: "missing" }
+	| { kind: "ok"; raw: Record<string, unknown> }
+	| { kind: "unusable" };
 
 function pickTools(raw: unknown): OptimizerFileConfig {
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
@@ -36,13 +45,18 @@ async function readLockfile(filePath: string): Promise<LockfileSnapshot> {
 		const raw: unknown = await Bun.file(filePath).json();
 		const obj = asObject(raw);
 		if (!obj) {
-			logger.warn("omp-optimizer: plugin lockfile is not an object", { filePath });
+			logger.warn("omp-optimizer: plugin lockfile is not an object", {
+				filePath,
+			});
 			return { kind: "unusable" };
 		}
 		return { kind: "ok", raw: obj };
 	} catch (error) {
 		if (isEnoent(error)) return { kind: "missing" };
-		logger.warn("omp-optimizer: failed to read persist file", { filePath, error: String(error) });
+		logger.warn("omp-optimizer: failed to read persist file", {
+			filePath,
+			error: String(error),
+		});
 		return { kind: "unusable" };
 	}
 }
@@ -60,19 +74,37 @@ export function createOptimizerStore(lockPath: string): OptimizerStore {
 				if (snapshot.kind === "unusable") return;
 				const raw = snapshot.kind === "ok" ? snapshot.raw : {};
 				const ours = pickTools(asObject(raw.settings)?.[PLUGIN_NAME]);
-				const settings = { ...asObject(raw.settings), [PLUGIN_NAME]: { ...ours, [tool]: value } };
-				await Bun.write(lockPath, JSON.stringify({ ...raw, plugins: raw.plugins ?? {}, settings }, null, 2));
+				const settings = {
+					...asObject(raw.settings),
+					[PLUGIN_NAME]: { ...ours, [tool]: value },
+				};
+				await Bun.write(
+					lockPath,
+					JSON.stringify(
+						{ ...raw, plugins: raw.plugins ?? {}, settings },
+						null,
+						2,
+					),
+				);
 			} catch (error) {
-				logger.warn("omp-optimizer: failed to persist state", { tool, error: String(error) });
+				logger.warn("omp-optimizer: failed to persist state", {
+					tool,
+					error: String(error),
+				});
 			}
 		},
 	};
 }
 
-export async function loadOptValue(tool: OptimizerTool): Promise<string | undefined> {
+export async function loadOptValue(
+	tool: OptimizerTool,
+): Promise<string | undefined> {
 	return createOptimizerStore(getPluginsLockfile()).load(tool);
 }
 
-export async function saveOptValue(tool: OptimizerTool, value: string): Promise<void> {
+export async function saveOptValue(
+	tool: OptimizerTool,
+	value: string,
+): Promise<void> {
 	await createOptimizerStore(getPluginsLockfile()).save(tool, value);
 }

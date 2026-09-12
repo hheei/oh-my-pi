@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { OptimizerStatus, renderStatus, STATUS_KEY, toolIcon } from "./status.ts";
+import {
+	OptimizerStatus,
+	renderStatus,
+	STATUS_KEY,
+	toolIcon,
+} from "./status.ts";
 
 /** Tagging colorizer: <accent>X</accent> / <dim>X</dim> for assertions. */
 const tag = (c: string, t: string) => `<${c}>${t}</${c}>`;
@@ -12,19 +17,43 @@ const T2S = toolIcon("t2s");
 const EG = toolIcon("edit-guard");
 describe("renderStatus", () => {
 	it("shows ALL icons in order, accent when enabled", () => {
-		expect(renderStatus({ caveman: true, rtk: true, ponytail: true, t2s: true, "edit-guard": true }, tag)).toBe(
+		expect(
+			renderStatus(
+				{
+					caveman: true,
+					rtk: true,
+					ponytail: true,
+					t2s: true,
+					"edit-guard": true,
+				},
+				tag,
+			),
+		).toBe(
 			`<accent>${CV}</accent>  <accent>${RK}</accent>  <accent>${PT}</accent>  <accent>${T2S}</accent>  <accent>${EG}</accent> `,
 		);
 	});
 
 	it("dims disabled tools but still shows them", () => {
-		expect(renderStatus({ caveman: false, rtk: true, ponytail: true, t2s: true, "edit-guard": true }, tag)).toBe(
+		expect(
+			renderStatus(
+				{
+					caveman: false,
+					rtk: true,
+					ponytail: true,
+					t2s: true,
+					"edit-guard": true,
+				},
+				tag,
+			),
+		).toBe(
 			`<dim>${CV}</dim>  <accent>${RK}</accent>  <accent>${PT}</accent>  <accent>${T2S}</accent>  <accent>${EG}</accent> `,
 		);
 	});
 
 	it("all dim when nothing enabled (cell never empty)", () => {
-		expect(renderStatus({}, tag)).toBe(`<dim>${CV}</dim>  <dim>${RK}</dim>  <dim>${PT}</dim>  <dim>${T2S}</dim>  <dim>${EG}</dim> `);
+		expect(renderStatus({}, tag)).toBe(
+			`<dim>${CV}</dim>  <dim>${RK}</dim>  <dim>${PT}</dim>  <dim>${T2S}</dim>  <dim>${EG}</dim> `,
+		);
 	});
 
 	it("preserves fixed order regardless of insertion order", () => {
@@ -34,7 +63,13 @@ describe("renderStatus", () => {
 	});
 
 	it("uses the optimizer Nerd Font icon catalog", () => {
-		expect([CV, RK, PT, T2S, EG]).toEqual(["\u{F0710}", "\u{F04E5}", "\u{F0190}", "\u{F0AC}", "\u{F132}"]);
+		expect([CV, RK, PT, T2S, EG]).toEqual([
+			"\u{F0710}",
+			"\u{F04E5}",
+			"\u{F0190}",
+			"\u{F0AC}",
+			"\u{F132}",
+		]);
 	});
 });
 
@@ -45,7 +80,8 @@ describe("OptimizerStatus", () => {
 		return {
 			calls,
 			ui: {
-				setStatus: (key: string, text: string | undefined) => calls.push({ key, text: text ?? "" }),
+				setStatus: (key: string, text: string | undefined) =>
+					calls.push({ key, text: text ?? "" }),
 				theme: { fg: (c: string, t: string) => `<${c}>${t}</${c}>` },
 			},
 		} as const;
@@ -59,7 +95,9 @@ describe("OptimizerStatus", () => {
 		if (!last) throw new Error("no calls");
 		expect(last.key).toBe(STATUS_KEY);
 		// caveman + ponytail + edit guard still unset (dim), rtk accent.
-		expect(last.text).toBe(`<dim>${CV}</dim>  <accent>${RK}</accent>  <dim>${PT}</dim>  <dim>${T2S}</dim>  <dim>${EG}</dim> `);
+		expect(last.text).toBe(
+			`<dim>${CV}</dim>  <accent>${RK}</accent>  <dim>${PT}</dim>  <dim>${T2S}</dim>  <dim>${EG}</dim> `,
+		);
 	});
 
 	it("accumulates state across tools", () => {
@@ -69,7 +107,9 @@ describe("OptimizerStatus", () => {
 		status.set("ponytail", true, ctx as never);
 		const last = ctx.calls.at(-1);
 		if (!last) throw new Error("no calls");
-		expect(last.text).toBe(`<accent>${CV}</accent>  <dim>${RK}</dim>  <accent>${PT}</accent>  <dim>${T2S}</dim>  <dim>${EG}</dim> `);
+		expect(last.text).toBe(
+			`<accent>${CV}</accent>  <dim>${RK}</dim>  <accent>${PT}</accent>  <dim>${T2S}</dim>  <dim>${EG}</dim> `,
+		);
 	});
 
 	it("dims an icon when its tool toggles off (cell stays populated)", () => {
@@ -79,6 +119,8 @@ describe("OptimizerStatus", () => {
 		status.set("rtk", false, ctx as never);
 		const last = ctx.calls.at(-1);
 		if (!last) throw new Error("no calls");
-		expect(last.text).toBe(`<dim>${CV}</dim>  <dim>${RK}</dim>  <dim>${PT}</dim>  <dim>${T2S}</dim>  <dim>${EG}</dim> `);
+		expect(last.text).toBe(
+			`<dim>${CV}</dim>  <dim>${RK}</dim>  <dim>${PT}</dim>  <dim>${T2S}</dim>  <dim>${EG}</dim> `,
+		);
 	});
 });

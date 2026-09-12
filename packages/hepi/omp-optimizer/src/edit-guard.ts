@@ -1,6 +1,10 @@
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
-import type { OptimizerHandle, OptimizerStatus } from "./status.ts";
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+	ExtensionContext,
+} from "@oh-my-pi/pi-coding-agent";
 import { loadOptValue, saveOptValue } from "./persist.ts";
+import type { OptimizerHandle, OptimizerStatus } from "./status.ts";
 
 export type EditGuardLevel = "on" | "off";
 export const EDIT_GUARD_LEVELS: readonly EditGuardLevel[] = ["on", "off"];
@@ -20,7 +24,8 @@ declare global {
 }
 
 function currentRegistration(pi: ExtensionAPI): () => boolean {
-	const identity: object = typeof pi.events === "object" && pi.events !== null ? pi.events : pi;
+	const identity: object =
+		typeof pi.events === "object" && pi.events !== null ? pi.events : pi;
 	let registrations = globalThis.__ompOptimizerEditGuardRegistrations;
 	if (registrations === undefined) {
 		registrations = new WeakMap();
@@ -42,15 +47,20 @@ export function hasMalformedHashlineInput(input: string): boolean {
 }
 
 function blockReason(activeTools: readonly string[]): string {
-	const alternatives = ["edit", "write"].filter(name => activeTools.includes(name));
+	const alternatives = ["edit", "write"].filter((name) =>
+		activeTools.includes(name),
+	);
 	if (alternatives.length === 0) return NO_EDIT_TOOL_GUIDANCE;
-	const names = alternatives.map(name => `\`${name}\``);
+	const names = alternatives.map((name) => `\`${name}\``);
 	const action = names.length === 1 ? names[0] : `${names[0]} or ${names[1]}`;
 	return `\`apply_patch\` is unavailable; the call was aborted. Continue with ${action}. ${APPLY_PATCH_RETRY_WARNING}`;
 }
 
 /** Aborts malformed hashline edits and unavailable shell apply_patch calls. */
-export function editGuard(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle {
+export function editGuard(
+	pi: ExtensionAPI,
+	status: OptimizerStatus,
+): OptimizerHandle {
 	let level: EditGuardLevel = "on";
 	const isCurrent = currentRegistration(pi);
 	let interrupted = false;
@@ -69,8 +79,12 @@ export function editGuard(pi: ExtensionAPI, status: OptimizerStatus): OptimizerH
 		interrupted = false;
 		pendingReason = undefined;
 		for (const entry of ctx.sessionManager.getEntries()) {
-			if (entry.type !== "custom" || entry.customType !== "edit-guard-level") continue;
-			const saved = entry.data && typeof entry.data === "object" && "level" in entry.data ? entry.data.level : undefined;
+			if (entry.type !== "custom" || entry.customType !== "edit-guard-level")
+				continue;
+			const saved =
+				entry.data && typeof entry.data === "object" && "level" in entry.data
+					? entry.data.level
+					: undefined;
 			if (saved === "on" || saved === "off") level = saved;
 		}
 		const saved = await loadOptValue(EDIT_GUARD_TOOL);
@@ -98,7 +112,13 @@ export function editGuard(pi: ExtensionAPI, status: OptimizerStatus): OptimizerH
 		pendingReason = undefined;
 	});
 	pi.on("message_update", (event, context) => {
-		if (level !== "on" || interrupted || !isCurrent() || event.assistantMessageEvent.type !== "toolcall_delta") return;
+		if (
+			level !== "on" ||
+			interrupted ||
+			!isCurrent() ||
+			event.assistantMessageEvent.type !== "toolcall_delta"
+		)
+			return;
 		const update = event.assistantMessageEvent;
 		const content = update.partial.content[update.contentIndex];
 		if (content?.type !== "toolCall") return;
@@ -106,11 +126,13 @@ export function editGuard(pi: ExtensionAPI, status: OptimizerStatus): OptimizerH
 		let reason: string | undefined;
 		if (content.name === "edit") {
 			const input = content.arguments.input;
-			if (typeof input === "string" && hasMalformedHashlineInput(input)) reason = HASHLINE_GUARD_MESSAGE;
+			if (typeof input === "string" && hasMalformedHashlineInput(input))
+				reason = HASHLINE_GUARD_MESSAGE;
 		} else if (content.name === "bash") {
 			if (pi.getActiveTools().includes("apply_patch")) return;
 			const command = content.arguments.command;
-			if (typeof command === "string" && hasStreamingApplyPatchCommand(command)) reason = blockReason(pi.getActiveTools());
+			if (typeof command === "string" && hasStreamingApplyPatchCommand(command))
+				reason = blockReason(pi.getActiveTools());
 		}
 		if (reason === undefined) return;
 		interrupted = true;
@@ -118,13 +140,19 @@ export function editGuard(pi: ExtensionAPI, status: OptimizerStatus): OptimizerH
 		context.abort();
 	});
 
-	async function run(value: string, ctx: ExtensionCommandContext): Promise<void> {
+	async function run(
+		value: string,
+		ctx: ExtensionCommandContext,
+	): Promise<void> {
 		if (value !== "on" && value !== "off") return;
 		level = value;
 		pi.appendEntry("edit-guard-level", { level });
 		await saveOptValue(EDIT_GUARD_TOOL, level);
 		syncStatus(ctx);
-		ctx.ui.notify(`Edit Guard ${level === "on" ? "enabled" : "disabled"}`, "info");
+		ctx.ui.notify(
+			`Edit Guard ${level === "on" ? "enabled" : "disabled"}`,
+			"info",
+		);
 	}
 
 	return {

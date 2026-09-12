@@ -14,7 +14,11 @@ import type {
 	ExtensionContext,
 } from "@oh-my-pi/pi-coding-agent";
 import { loadOptValue, saveOptValue } from "./persist.ts";
-import type { OptimizerHandle, OptimizerStatus, OptimizerTool } from "./status.ts";
+import type {
+	OptimizerHandle,
+	OptimizerStatus,
+	OptimizerTool,
+} from "./status.ts";
 
 /**
  * Resolve a raw command arg to a level, or null if unrecognised.
@@ -93,7 +97,10 @@ export function createMode<L extends string>(
 	pi.on("agent_end", async (_event, ctx) => syncStatus(ctx));
 	pi.on("session_shutdown", async () => {});
 
-	async function run(value: string, ctx: ExtensionCommandContext): Promise<void> {
+	async function run(
+		value: string,
+		ctx: ExtensionCommandContext,
+	): Promise<void> {
 		const resolved = config.resolve(value);
 		if (resolved === null) return;
 		level = resolved;

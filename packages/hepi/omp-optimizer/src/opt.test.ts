@@ -4,7 +4,11 @@ import type { OptimizerHandle, OptimizerTool } from "./status.ts";
 
 /** Build a handle set with fixed current values + value lists. */
 function fakeHandles(): Record<OptimizerTool, OptimizerHandle> {
-	const mk = (name: OptimizerTool, current: string, values: string[]): OptimizerHandle => ({
+	const mk = (
+		name: OptimizerTool,
+		current: string,
+		values: string[],
+	): OptimizerHandle => ({
 		name,
 		help: `${name} — ${name} help`,
 		values,
@@ -19,7 +23,6 @@ function fakeHandles(): Record<OptimizerTool, OptimizerHandle> {
 		"edit-guard": mk("edit-guard", "on", ["on", "off"]),
 	};
 }
-
 
 describe("buildOptHelp", () => {
 	it("lists every tool with its current value", () => {

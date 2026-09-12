@@ -1,6 +1,10 @@
 /** Shared status-bar state for the optimizer tools. */
 
-import type { ExtensionCommandContext, ExtensionContext, ThemeColor } from "@oh-my-pi/pi-coding-agent";
+import type {
+	ExtensionCommandContext,
+	ExtensionContext,
+	ThemeColor,
+} from "@oh-my-pi/pi-coding-agent";
 
 export interface OptimizerHandle {
 	name: OptimizerTool;
@@ -11,7 +15,12 @@ export interface OptimizerHandle {
 }
 
 export const STATUS_KEY = "omp-optimizer";
-export type OptimizerTool = "caveman" | "rtk" | "ponytail" | "t2s" | "edit-guard";
+export type OptimizerTool =
+	| "caveman"
+	| "rtk"
+	| "ponytail"
+	| "t2s"
+	| "edit-guard";
 
 /** Optimizer-specific Nerd Font glyphs, matching pix-optimizer's catalog. */
 const TOOL_GLYPH: Record<OptimizerTool, string> = {
@@ -28,7 +37,13 @@ export function toolIcon(tool: OptimizerTool): string {
 	return TOOL_GLYPH[tool];
 }
 
-const TOOL_ORDER: readonly OptimizerTool[] = ["caveman", "rtk", "ponytail", "t2s", "edit-guard"];
+const TOOL_ORDER: readonly OptimizerTool[] = [
+	"caveman",
+	"rtk",
+	"ponytail",
+	"t2s",
+	"edit-guard",
+];
 const ENABLED_COLOR: ThemeColor = "accent";
 const DISABLED_COLOR: ThemeColor = "dim";
 
@@ -38,7 +53,7 @@ export function renderStatus(
 	states: Partial<Record<OptimizerTool, boolean>>,
 	color: Colorize,
 ): string {
-	return `${TOOL_ORDER.map(tool => color(states[tool] === true ? ENABLED_COLOR : DISABLED_COLOR, toolIcon(tool))).join("  ")} `;
+	return `${TOOL_ORDER.map((tool) => color(states[tool] === true ? ENABLED_COLOR : DISABLED_COLOR, toolIcon(tool))).join("  ")} `;
 }
 
 export class OptimizerStatus {
@@ -49,13 +64,19 @@ export class OptimizerStatus {
 		return this.#states[tool];
 	}
 
-	set(tool: OptimizerTool, enabled: boolean, ctx: Pick<ExtensionContext, "ui">): void {
+	set(
+		tool: OptimizerTool,
+		enabled: boolean,
+		ctx: Pick<ExtensionContext, "ui">,
+	): void {
 		this.#states[tool] = enabled;
 		this.paint(ctx);
 	}
 
 	paint(ctx: Pick<ExtensionContext, "ui">): void {
-		const text = renderStatus(this.#states, (color, value) => ctx.ui.theme.fg(color, value));
+		const text = renderStatus(this.#states, (color, value) =>
+			ctx.ui.theme.fg(color, value),
+		);
 		ctx.ui.setStatus(STATUS_KEY, text);
 	}
 }

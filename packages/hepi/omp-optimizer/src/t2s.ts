@@ -1,5 +1,9 @@
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+	ExtensionContext,
+} from "@oh-my-pi/pi-coding-agent";
 import OpenCC from "opencc-js/t2cn";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { loadOptValue, saveOptValue } from "./persist.ts";
 import type { OptimizerHandle, OptimizerStatus } from "./status.ts";
 
@@ -14,7 +18,8 @@ const toSimplified = OpenCC.Converter({ from: "tw", to: "cn" });
 
 function matchFence(line: string): Fence | undefined {
 	let start = 0;
-	while (start < line.length && (line[start] === " " || line[start] === "\t")) start++;
+	while (start < line.length && (line[start] === " " || line[start] === "\t"))
+		start++;
 	const char = line[start];
 	if (char !== "`" && char !== "~") return undefined;
 	let end = start;
@@ -27,8 +32,14 @@ function proseLine(line: string): string {
 	let cursor = 0;
 	while (cursor < line.length) {
 		const openStart = line.indexOf("`", cursor);
-		if (openStart < 0) return output + toSimplified(line.slice(cursor)).replaceAll("甚么", "什么");
-		output += toSimplified(line.slice(cursor, openStart)).replaceAll("甚么", "什么");
+		if (openStart < 0)
+			return (
+				output + toSimplified(line.slice(cursor)).replaceAll("甚么", "什么")
+			);
+		output += toSimplified(line.slice(cursor, openStart)).replaceAll(
+			"甚么",
+			"什么",
+		);
 		let openEnd = openStart;
 		while (openEnd < line.length && line[openEnd] === "`") openEnd++;
 		const delimiterLength = openEnd - openStart;
@@ -38,7 +49,8 @@ function proseLine(line: string): string {
 			const candidateStart = line.indexOf("`", searchFrom);
 			if (candidateStart < 0) break;
 			let candidateEnd = candidateStart;
-			while (candidateEnd < line.length && line[candidateEnd] === "`") candidateEnd++;
+			while (candidateEnd < line.length && line[candidateEnd] === "`")
+				candidateEnd++;
 			if (candidateEnd - candidateStart === delimiterLength) {
 				closeEnd = candidateEnd;
 				break;
@@ -63,7 +75,11 @@ export function convertInputText(text: string): string {
 		const fence = matchFence(line);
 		if (activeFence) {
 			output += line + (hasLineFeed ? "\n" : "");
-			if (fence?.char === activeFence.char && fence.length >= activeFence.length) activeFence = undefined;
+			if (
+				fence?.char === activeFence.char &&
+				fence.length >= activeFence.length
+			)
+				activeFence = undefined;
 		} else if (fence) {
 			activeFence = fence;
 			output += line + (hasLineFeed ? "\n" : "");
@@ -74,8 +90,10 @@ export function convertInputText(text: string): string {
 	return output;
 }
 
-
-export function t2s(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle {
+export function t2s(
+	pi: ExtensionAPI,
+	status: OptimizerStatus,
+): OptimizerHandle {
 	let level: T2sLevel = "on";
 
 	function syncStatus(ctx: Pick<ExtensionContext, "ui">) {
@@ -91,7 +109,10 @@ export function t2s(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle 
 	pi.on("session_start", async (_event, ctx) => {
 		for (const entry of ctx.sessionManager.getEntries()) {
 			if (entry.type !== "custom" || entry.customType !== "t2s-level") continue;
-			const saved = entry.data && typeof entry.data === "object" && "level" in entry.data ? entry.data.level : undefined;
+			const saved =
+				entry.data && typeof entry.data === "object" && "level" in entry.data
+					? entry.data.level
+					: undefined;
 			if (saved === "on" || saved === "off") level = saved;
 		}
 		const saved = await loadOptValue("t2s");
@@ -102,7 +123,10 @@ export function t2s(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle 
 	pi.on("agent_start", async (_event, ctx) => syncStatus(ctx));
 	pi.on("agent_end", async (_event, ctx) => syncStatus(ctx));
 
-	async function run(value: string, ctx: ExtensionCommandContext): Promise<void> {
+	async function run(
+		value: string,
+		ctx: ExtensionCommandContext,
+	): Promise<void> {
 		if (value !== "on" && value !== "off") return;
 		level = value;
 		pi.appendEntry("t2s-level", { level });
@@ -110,7 +134,6 @@ export function t2s(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle 
 		syncStatus(ctx);
 		ctx.ui.notify(`T2S ${level === "on" ? "enabled" : "disabled"}`, "info");
 	}
-
 
 	return {
 		name: "t2s",

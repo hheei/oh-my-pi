@@ -1,9 +1,16 @@
 /** OMP-native SettingsList interaction tests for the /optimizer overlay. */
 
 import { describe, expect, it } from "bun:test";
-import type { ExtensionAPI, ExtensionCommandContext } from "@oh-my-pi/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+} from "@oh-my-pi/pi-coding-agent";
 import { registerOptCommand } from "./opt.ts";
-import type { OptimizerHandle, OptimizerStatus, OptimizerTool } from "./status.ts";
+import type {
+	OptimizerHandle,
+	OptimizerStatus,
+	OptimizerTool,
+} from "./status.ts";
 
 const KEYS = {
 	up: { legacy: "\u001b[A", kitty: "\u001b[1;1A" },
@@ -30,21 +37,31 @@ interface Driver {
 
 async function openOverlay(): Promise<Driver> {
 	const runs: Array<{ tool: string; value: string }> = [];
-	const makeHandle = (name: OptimizerTool, current: string, values: string[]): OptimizerHandle => {
+	const makeHandle = (
+		name: OptimizerTool,
+		current: string,
+		values: string[],
+	): OptimizerHandle => {
 		let value = current;
 		return {
 			name,
 			help: `${name} — help`,
 			values,
 			current: () => value,
-			run: async next => {
+			run: async (next) => {
 				value = next;
 				runs.push({ tool: name, value: next });
 			},
 		};
 	};
 	const handles: Record<OptimizerTool, OptimizerHandle> = {
-		caveman: makeHandle("caveman", "off", ["off", "lite", "full", "ultra", "micro"]),
+		caveman: makeHandle("caveman", "off", [
+			"off",
+			"lite",
+			"full",
+			"ultra",
+			"micro",
+		]),
 		rtk: makeHandle("rtk", "off", ["off", "on"]),
 		ponytail: makeHandle("ponytail", "off", ["off", "lite", "full", "ultra"]),
 		t2s: makeHandle("t2s", "on", ["on", "off"]),
@@ -53,9 +70,14 @@ async function openOverlay(): Promise<Driver> {
 
 	let overlay: Overlay | undefined;
 	let closed = false;
-	let commandHandler: ((args: string, ctx: ExtensionCommandContext) => Promise<void>) | undefined;
+	let commandHandler:
+		| ((args: string, ctx: ExtensionCommandContext) => Promise<void>)
+		| undefined;
 	const pi = {
-		registerCommand: (_name: string, spec: { handler: typeof commandHandler }) => {
+		registerCommand: (
+			_name: string,
+			spec: { handler: typeof commandHandler },
+		) => {
 			commandHandler = spec.handler;
 		},
 	} as unknown as ExtensionAPI;
@@ -68,7 +90,12 @@ async function openOverlay(): Promise<Driver> {
 		ui: {
 			notify: () => {},
 			custom: async <T>(
-				factory: (tui: { requestRender(): void }, theme: unknown, keybindings: unknown, done: (value: T) => void) => Overlay,
+				factory: (
+					tui: { requestRender(): void },
+					theme: unknown,
+					keybindings: unknown,
+					done: (value: T) => void,
+				) => Overlay,
 			): Promise<T | undefined> => {
 				overlay = factory(
 					{ requestRender: () => {} },
@@ -98,7 +125,7 @@ async function openOverlay(): Promise<Driver> {
 	if (!overlay) throw new Error("overlay was not constructed");
 	const component = overlay;
 	return {
-		feed: data => component.handleInput(data),
+		feed: (data) => component.handleInput(data),
 		runs: () => runs,
 		closed: () => closed,
 		rows: () => component.render(80),

@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.workspace.json",
-  "compilerOptions": {"allowImportingTsExtensions": true},
-  "include": ["src"]
+	"extends": "../../tsconfig.workspace.json",
+	"compilerOptions": { "allowImportingTsExtensions": true },
+	"include": ["src"]
 }

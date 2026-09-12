@@ -1,38 +1,62 @@
 /** Interactive `/optimizer` command using OMP's native settings components. */
 
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+	Theme,
+} from "@oh-my-pi/pi-coding-agent";
 import { getSettingsListTheme } from "@oh-my-pi/pi-coding-agent";
-import type { ExtensionAPI, ExtensionCommandContext, Theme } from "@oh-my-pi/pi-coding-agent";
 import {
 	type Component,
 	matchesKey,
 	padding,
-	SettingsList,
-	truncateToWidth,
 	type SettingItem,
+	SettingsList,
 	type TUI,
+	truncateToWidth,
 	visibleWidth,
 } from "@oh-my-pi/pi-tui";
-import type { OptimizerHandle, OptimizerStatus, OptimizerTool } from "./status.ts";
+import type {
+	OptimizerHandle,
+	OptimizerStatus,
+	OptimizerTool,
+} from "./status.ts";
 import { OPTIMIZER_ICON, toolIcon } from "./status.ts";
 
-const TOOL_ORDER: readonly OptimizerTool[] = ["caveman", "rtk", "ponytail", "t2s", "edit-guard"];
+const TOOL_ORDER: readonly OptimizerTool[] = [
+	"caveman",
+	"rtk",
+	"ponytail",
+	"t2s",
+	"edit-guard",
+];
 
 function helpSummary(help: string): string {
 	const dash = help.indexOf("—");
 	return dash === -1 ? help : help.slice(dash + 1).trim();
 }
 
-export function buildOptHelp(handles: Record<OptimizerTool, OptimizerHandle>): string {
-	const lines = TOOL_ORDER.map(tool => `  ${tool}: ${handles[tool].current()} — ${helpSummary(handles[tool].help)}`);
+export function buildOptHelp(
+	handles: Record<OptimizerTool, OptimizerHandle>,
+): string {
+	const lines = TOOL_ORDER.map(
+		(tool) =>
+			`  ${tool}: ${handles[tool].current()} — ${helpSummary(handles[tool].help)}`,
+	);
 	return ["omp-optimizer — token tools", "", ...lines].join("\n");
 }
 
 function displayName(tool: OptimizerTool): string {
-	return tool.split("-").map(part => `${part[0]?.toUpperCase()}${part.slice(1)}`).join(" ");
+	return tool
+		.split("-")
+		.map((part) => `${part[0]?.toUpperCase()}${part.slice(1)}`)
+		.join(" ");
 }
 
-function buildItems(handles: Record<OptimizerTool, OptimizerHandle>): SettingItem[] {
-	return TOOL_ORDER.map(tool => ({
+function buildItems(
+	handles: Record<OptimizerTool, OptimizerHandle>,
+): SettingItem[] {
+	return TOOL_ORDER.map((tool) => ({
 		id: tool,
 		label: `${toolIcon(tool)}  ${displayName(tool)}`,
 		description: helpSummary(handles[tool].help),
@@ -51,11 +75,13 @@ function normalizeSettingsKey(data: string): string {
 }
 
 function trimSettingsListPadding(rows: readonly string[]): string[] {
-	const footerIndex = rows.findLastIndex(row => row !== "");
+	const footerIndex = rows.findLastIndex((row) => row !== "");
 	if (footerIndex < 0) return [...rows];
+	const footer = rows[footerIndex];
+	if (footer === undefined) return [...rows];
 	const content = rows.slice(0, footerIndex);
 	while (content.at(-1) === "") content.pop();
-	return [...content, "", rows[footerIndex]!];
+	return [...content, "", footer];
 }
 
 function fitLine(text: string, width: number): string {
@@ -80,7 +106,9 @@ function topBorder(width: number, title: string, theme: Theme): string {
 function bottomBorder(width: number, theme: Theme): string {
 	const border = (value: string) => theme.fg("border", value);
 	return border(
-		theme.boxRound.bottomLeft + theme.boxRound.horizontal.repeat(Math.max(0, width - 2)) + theme.boxRound.bottomRight,
+		theme.boxRound.bottomLeft +
+			theme.boxRound.horizontal.repeat(Math.max(0, width - 2)) +
+			theme.boxRound.bottomRight,
 	);
 }
 
@@ -116,7 +144,7 @@ class OptimizerPanel implements Component {
 		const rows = trimSettingsListPadding(this.#list.render(width));
 		return [
 			topBorder(width, `${OPTIMIZER_ICON}  Optimizer`, this.#theme),
-			...rows.map(row => frameRow(row, width, this.#theme)),
+			...rows.map((row) => frameRow(row, width, this.#theme)),
 			bottomBorder(width, this.#theme),
 		];
 	}
@@ -148,12 +176,19 @@ export function registerOptCommand(
 				return;
 			}
 			await ctx.ui.custom<null>(
-				(tui, theme, _keybindings, done) => new OptimizerPanel(tui, theme, handles, ctx, done),
+				(tui, theme, _keybindings, done) =>
+					new OptimizerPanel(tui, theme, handles, ctx, done),
 				{
 					overlay: true,
 					// ponytail: default custom overlays are bottom-centered, leaving the
 					// transcript-sized prompt area blank above this short panel.
-					overlayOptions: { anchor: "top-center", offsetY: 5, width: "100%", maxHeight: "100%", margin: 0 },
+					overlayOptions: {
+						anchor: "top-center",
+						offsetY: 5,
+						width: "100%",
+						maxHeight: "100%",
+						margin: 0,
+					},
 				},
 			);
 		},

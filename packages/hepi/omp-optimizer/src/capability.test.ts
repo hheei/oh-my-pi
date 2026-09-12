@@ -20,14 +20,26 @@ describe("canExecute", () => {
 	});
 
 	it("supports a custom timeout", async () => {
-		const exec = mock(async () => ({ stdout: "rtk 0.30.0", stderr: "", code: 0, killed: false }));
+		const exec = mock(async () => ({
+			stdout: "rtk 0.30.0",
+			stderr: "",
+			code: 0,
+			killed: false,
+		}));
 
-		expect(await canExecute(executor(exec), "rtk", ["--version"], 1000)).toBe(true);
+		expect(await canExecute(executor(exec), "rtk", ["--version"], 1000)).toBe(
+			true,
+		);
 		expect(exec).toHaveBeenCalledWith("rtk", ["--version"], { timeout: 1000 });
 	});
 
 	it("returns false for a non-zero exit", async () => {
-		const exec = mock(async () => ({ stdout: "", stderr: "failed", code: 1, killed: false }));
+		const exec = mock(async () => ({
+			stdout: "",
+			stderr: "failed",
+			code: 1,
+			killed: false,
+		}));
 
 		expect(await canExecute(executor(exec), "jq", ["--version"])).toBe(false);
 	});

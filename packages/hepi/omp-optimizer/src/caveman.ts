@@ -104,7 +104,8 @@ export function resolveLevel(arg: string): Level | null {
  * Help text shown when /caveman is run with no argument.
  */
 export function buildHelp(current: Level): string {
-	const statusLine = current === "off" ? "off" : `${STATUS_LABELS[current]} (${current})`;
+	const statusLine =
+		current === "off" ? "off" : `${STATUS_LABELS[current]} (${current})`;
 	return [
 		`Caveman mode: ${statusLine}`,
 		"",
@@ -128,13 +129,19 @@ export function toggleLevel(current: Level): Level {
 
 // ── Pi extension ────────────────────────────────────────────────────────────
 
-export function caveman(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle {
+export function caveman(
+	pi: ExtensionAPI,
+	status: OptimizerStatus,
+): OptimizerHandle {
 	return createMode(pi, status, {
 		name: "caveman",
 		help: "caveman — terse output",
 		levels: LEVELS,
 		buildPrompt,
 		resolve: resolveLevel,
-		notify: (level) => (level === "off" ? "Caveman mode off." : `Caveman: ${STATUS_LABELS[level]}`),
+		notify: (level) =>
+			level === "off"
+				? "Caveman mode off."
+				: `Caveman: ${STATUS_LABELS[level]}`,
 	});
 }

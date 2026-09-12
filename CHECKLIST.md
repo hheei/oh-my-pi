@@ -13,7 +13,7 @@
 
 | npm 包 | 当前发布版本 | manifest / 版本字段 | CI 发布方式 | 自动触发路径 |
 | --- | --- | --- | --- | --- |
-| `@hheei/oh-my-pi` | `1.0.2` | `packages/coding-agent/package.json` 的 `fork.npmName` / `fork.npmVersion` | `.github/workflows/oh-my-pi-publish.yml` 打包后发布 | 仅 `packages/coding-agent/package.json` |
+| `@hheei/oh-my-pi` | `1.1.0` | `packages/coding-agent/package.json` 的 `fork.npmName` / `fork.npmVersion` | `.github/workflows/oh-my-pi-publish.yml` 打包后发布 | 仅 `packages/coding-agent/package.json` |
 | `@hheei/omp-optimizer` | `0.1.2` | `packages/hepi/omp-optimizer/package.json` 的 `name` / `version` | `.github/workflows/omp-optimizer-publish.yml` | package manifest 或该 workflow |
 | `@hheei/omp-enhance` | `0.1.0` | `packages/hepi/omp-enhance/package.json` 的 `name` / `version` | `.github/workflows/omp-enhance-publish.yml` | package manifest 或该 workflow |
 | `@hheei/omp-mctx` | `0.1.0` | `packages/hepi/omp-mctx/package.json` 的 `name` / `version` | `.github/workflows/omp-mctx-publish.yml` | package manifest 或该 workflow |
@@ -24,10 +24,10 @@
 
 `packages/coding-agent/package.json` 同时保存两个彼此独立的版本轴：
 
-- `version`：内部 workspace / 上游源码版本。**必须**跟随当前已同步的上游版本，本次为 `18.1.6`。
-- `fork.upstreamVersion`：记录最近同步的上游版本。**必须**与 `version` 保持相同，本次为 `18.1.6`。
+- `version`：内部 workspace / 上游源码版本。**必须**跟随当前已同步的上游版本，本次为 `18.1.18`。
+- `fork.upstreamVersion`：记录最近同步的上游版本。**必须**与 `version` 保持相同，本次为 `18.1.18`。
 - `fork.npmName`：fork 的公开 npm 名称，当前为 `@hheei/oh-my-pi`。
-- `fork.npmVersion`：fork 的公开 npm 发布版本，当前为 `1.0.2`；它不需要也不应与上游版本相同。
+- `fork.npmVersion`：fork 的公开 npm 发布版本，当前为 `1.1.0`；它不需要也不应与上游版本相同。
 
 `oh-my-pi-publish.yml` 在 `bun pm pack` 前临时将 npm manifest 改为 `fork.npmName` 和 `fork.npmVersion`，随后发布 tarball；源码 manifest 的 `name`、`version` 和 workspace lockfile 不应为了 fork npm 版本而改写。
 

@@ -109,7 +109,8 @@ export function resolveLevel(arg: string): Level | null {
  * Help text shown when /opt ponytail is run with no argument.
  */
 export function buildHelp(current: Level): string {
-	const statusLine = current === "off" ? "off" : `${STATUS_LABELS[current]} (${current})`;
+	const statusLine =
+		current === "off" ? "off" : `${STATUS_LABELS[current]} (${current})`;
 	return [
 		`Ponytail mode: ${statusLine}`,
 		"",
@@ -132,7 +133,10 @@ export function toggleLevel(current: Level): Level {
 
 // ── Pi extension ────────────────────────────────────────────────────────────
 
-export function ponytail(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHandle {
+export function ponytail(
+	pi: ExtensionAPI,
+	status: OptimizerStatus,
+): OptimizerHandle {
 	return createMode(pi, status, {
 		name: "ponytail",
 		help: "ponytail — lazy senior dev (minimal code)",
@@ -140,6 +144,8 @@ export function ponytail(pi: ExtensionAPI, status: OptimizerStatus): OptimizerHa
 		buildPrompt,
 		resolve: resolveLevel,
 		notify: (level) =>
-			level === "off" ? "Ponytail mode off." : `Ponytail: ${STATUS_LABELS[level]}`,
+			level === "off"
+				? "Ponytail mode off."
+				: `Ponytail: ${STATUS_LABELS[level]}`,
 	});
 }

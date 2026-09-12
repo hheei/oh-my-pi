@@ -3,7 +3,13 @@ import type { CustomEditor, SlashCommandInfo } from "@oh-my-pi/pi-coding-agent";
 import { createPercentAtomicEditor } from "./atomic-editor";
 
 const commands: SlashCommandInfo[] = [
-	{ name: "skill:reader", source: "skill", path: "/skills/reader/SKILL.md", description: "Read", location: "user" },
+	{
+		name: "skill:reader",
+		source: "skill",
+		path: "/skills/reader/SKILL.md",
+		description: "Read",
+		location: "user",
+	},
 ];
 
 function fakeEditor(text: string, col: number): CustomEditor {
@@ -63,14 +69,22 @@ function fakeEditor(text: string, col: number): CustomEditor {
 describe("percent atomic editor", () => {
 	test("backspace deletes the whole token and leaves neighbors", () => {
 		const editor = fakeEditor("x %reader y", 6);
-		createPercentAtomicEditor(editor, () => commands, () => true);
+		createPercentAtomicEditor(
+			editor,
+			() => commands,
+			() => true,
+		);
 		editor.handleInput("\x7f");
 		expect(editor.getLines()[0]).toBe("x  y");
 		expect(editor.getCursor().col).toBe(2);
 	});
 	test("delete deletes the whole token and leaves neighbors", () => {
 		const editor = fakeEditor("x %reader y", 2);
-		createPercentAtomicEditor(editor, () => commands, () => true);
+		createPercentAtomicEditor(
+			editor,
+			() => commands,
+			() => true,
+		);
 		editor.handleInput("\x1b[3~");
 		expect(editor.getLines()[0]).toBe("x  y");
 		expect(editor.getCursor().col).toBe(2);

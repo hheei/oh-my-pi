@@ -14,13 +14,17 @@
  */
 
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import { editGuard } from "./edit-guard.ts";
 import { caveman } from "./caveman.ts";
+import { editGuard } from "./edit-guard.ts";
 import { registerOptCommand } from "./opt.ts";
 import { ponytail } from "./ponytail.ts";
 import { rtk } from "./rtk.ts";
+import {
+	type OptimizerHandle,
+	OptimizerStatus,
+	type OptimizerTool,
+} from "./status.ts";
 import { t2s } from "./t2s.ts";
-import { type OptimizerHandle, OptimizerStatus, type OptimizerTool } from "./status.ts";
 import { filterModelWarnings } from "./tool-result-filter.ts";
 
 export default function optimizer(pi: ExtensionAPI) {

@@ -7,7 +7,8 @@ describe("optimizer t2s", () => {
 	});
 
 	test("preserves inline and fenced code", () => {
-		const input = "請看 `甚麼`\n```ts\n甚麼設定\n```\n~~~txt\n最後設定\n~~~\n最後設定";
+		const input =
+			"請看 `甚麼`\n```ts\n甚麼設定\n```\n~~~txt\n最後設定\n~~~\n最後設定";
 		expect(convertInputText(input)).toBe(
 			"请看 `甚麼`\n```ts\n甚麼設定\n```\n~~~txt\n最後設定\n~~~\n最后设定",
 		);
