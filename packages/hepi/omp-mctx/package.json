@@ -20,7 +20,7 @@
 	},
 	"scripts": {
 		"check": "tsgo -p tsconfig.json --noEmit",
-		"test": "bun test src/host src/agentmemory test/agentmemory src/agentmemory-foundation.test.ts src/core/shared/data-path.ts src/core/features/fresh-schema.test.ts src/core/features/context-projection.test.ts src/core/features/context-projection-coordinator.test.ts src/core/features/fail-closed-block.test.ts src/core/features/memory/embedding-local.test.ts src/core/features/memory/embedding-openai-failure.test.ts src/core/hooks/empty-task-output.test.ts src/core/hooks/temporal-awareness.test.ts src/core/hooks/strip-content.test.ts src/core/hooks/format-embed-failure.test.ts src/core/agents/magic-context-prompt.test.ts src/commands/ctx-embed-partial.test.ts src/config/config.test.ts src/core/hooks/lkg-persist.test.ts src/core/hooks/raw-fallback-context-limit.test.ts src/lkg-pi.test.ts"
+		"test": "bun test src/host src/agentmemory test/agentmemory src/agentmemory-foundation.test.ts src/core/shared/data-path.ts src/core/features/fresh-schema.test.ts src/core/features/context-projection.test.ts src/core/features/context-projection-coordinator.test.ts src/core/features/fail-closed-block.test.ts src/core/features/memory/embedding-local.test.ts src/core/features/memory/embedding-openai-failure.test.ts src/core/hooks/empty-task-output.test.ts src/core/hooks/temporal-awareness.test.ts src/core/hooks/strip-content.test.ts src/core/hooks/format-embed-failure.test.ts src/core/agents/magic-context-prompt.test.ts src/commands/ctx-embed-partial.test.ts src/config/config.test.ts src/core/hooks/lkg-persist.test.ts src/core/hooks/raw-fallback-context-limit.test.ts src/lkg-pi.test.ts test/core/features/storage-open-concurrency.test.ts"
 	},
 	"omp": {
 		"extensions": [

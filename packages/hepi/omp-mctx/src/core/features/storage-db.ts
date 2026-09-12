@@ -107,8 +107,8 @@ export function resolveDatabasePath(dbPathOverride?: string): { dbDir: string; d
 			testBackstopWarned = true;
 			log(
 				"[magic-context] TEST BACKSTOP: NODE_ENV=test with no MAGIC_CONTEXT_TEST_DATA_DIR " +
-					`— redirecting DB to a throwaway temp dir (${dbDir}) so no test can touch the ` +
-					"user's real shared database. Wire `[test] preload` in this package's bunfig.toml.",
+				`— redirecting DB to a throwaway temp dir (${dbDir}) so no test can touch the ` +
+				"user's real shared database. Wire `[test] preload` in this package's bunfig.toml.",
 			);
 		}
 		return { dbDir, dbPath: join(dbDir, "context.db") };
@@ -178,6 +178,12 @@ const CHANNEL2_CLAIM_TTL_MS = 120_000;
 /** Requeue crash-stranded Channel-2 deliveries after their lease expires. */
 function healWedgedChannel2Claims(db: Database): void {
 	const staleBefore = Date.now() - CHANNEL2_CLAIM_TTL_MS;
+	const staleClaim = db
+		.prepare(
+			"SELECT 1 FROM session_meta WHERE channel2_nudge_state = 'claimed' AND (channel2_nudge_claimed_at IS NULL OR channel2_nudge_claimed_at = 0 OR channel2_nudge_claimed_at <= ?) LIMIT 1",
+		)
+		.get(staleBefore);
+	if (!staleClaim) return;
 	db.prepare(
 		"UPDATE session_meta SET channel2_nudge_state = 'pending', channel2_nudge_claimed_at = 0, channel2_nudge_claim_token = '' WHERE channel2_nudge_state = 'claimed' AND (channel2_nudge_claimed_at IS NULL OR channel2_nudge_claimed_at = 0 OR channel2_nudge_claimed_at <= ?)",
 	).run(staleBefore);
@@ -227,6 +233,30 @@ export function initializeDatabase(db: Database, options: { memoryEnabled?: bool
 	invalidateSqliteTableCache(db);
 }
 
+const SQLITE_OPEN_MAX_ATTEMPTS = 3;
+const SQLITE_OPEN_RETRY_DELAY_MS = 250;
+
+function isSqliteLockError(error: unknown): boolean {
+	if (!error || typeof error !== "object") return false;
+	const sqliteError = error as { code?: unknown; message?: unknown };
+	if (sqliteError.code === "SQLITE_BUSY" || sqliteError.code === "SQLITE_LOCKED") return true;
+	if (typeof sqliteError.message !== "string") return false;
+	return /database is locked/i.test(sqliteError.message) || /sqlite_(busy|locked)/i.test(sqliteError.message);
+}
+
+function openDatabaseAttempt(dbDir: string, dbPath: string): Database {
+	let db: Database | undefined;
+	try {
+		ensureSecureStorageDir(dbDir);
+		db = new Database(dbPath);
+		initializeDatabase(db);
+		return finishDatabaseOpen(db, dbPath);
+	} catch (error) {
+		if (db) closeQuietly(db);
+		throw error;
+	}
+}
+
 /**
  * Open the persistent Magic Context SQLite database.
  *
@@ -255,22 +285,15 @@ export function openDatabase(dbPathOrOptions?: string | OpenDatabaseOptions): Da
 		if (!persistenceByDatabase.has(existing)) {
 			persistenceByDatabase.set(existing, true);
 		}
-		// processes keep this handle for hours, and a revert/confirm DB lock can
-		// leave a stale `claimed` lease behind until some later openDatabase()
-		// call. The heal is one idempotent UPDATE gated by claimed_at age.
-		healWedgedChannel2Claims(existing);
+		// Reusing an open handle must remain a read-free, write-free fast path.
+		// In particular, stale-claim healing can block for busy_timeout while a
+		// different process owns the writer lock; fresh opens perform that heal.
 		return existing;
 	}
 
-	let db: Database | undefined;
 	try {
-		ensureSecureStorageDir(dbDir);
-
-		db = new Database(dbPath);
-		initializeDatabase(db);
-		return finishDatabaseOpen(db, dbPath);
+		return openDatabaseAttempt(dbDir, dbPath);
 	} catch (error) {
-		if (db) closeQuietly(db);
 		const detail = getErrorMessage(error);
 		log(`[magic-context] storage fatal: failed to open ${dbPath}: ${detail}`);
 		// No silent in-memory fallback — see comment above. Caller must
@@ -289,34 +312,28 @@ export async function openDatabaseAsync(dbPathOrOptions?: string | OpenDatabaseO
 	const options = typeof dbPathOrOptions === "string" ? { dbPath: dbPathOrOptions } : dbPathOrOptions;
 	const { dbDir, dbPath } = resolveDatabasePath(options?.dbPath);
 	const existing = databases.get(dbPath);
-	if (existing) {
-		healWedgedChannel2Claims(existing);
-		return existing;
-	}
+	if (existing) return existing;
 
 	const pending = pendingAsyncOpens.get(dbPath);
-	if (pending) {
-		return pending.then(db => {
-			return db;
-		});
-	}
+	if (pending) return pending;
 
 	const opening = (async (): Promise<Database> => {
-		let db: Database | undefined;
-		try {
-			ensureSecureStorageDir(dbDir);
-
-			db = new Database(dbPath);
-			initializeDatabase(db);
-			return finishDatabaseOpen(db, dbPath);
-		} catch (error) {
-			if (db) closeQuietly(db);
-			const detail = getErrorMessage(error);
-			log(`[magic-context] storage fatal: failed to open ${dbPath}: ${detail}`);
-			throw new Error(
-				`[magic-context] storage unavailable: ${detail}. Magic Context is disabled for this run; check log for details.`,
-			);
+		let lastError: unknown;
+		for (let attempt = 1; attempt <= SQLITE_OPEN_MAX_ATTEMPTS; attempt++) {
+			try {
+				return openDatabaseAttempt(dbDir, dbPath);
+			} catch (error) {
+				lastError = error;
+				if (!isSqliteLockError(error) || attempt === SQLITE_OPEN_MAX_ATTEMPTS) break;
+				await Bun.sleep(SQLITE_OPEN_RETRY_DELAY_MS);
+			}
 		}
+
+		const detail = getErrorMessage(lastError);
+		log(`[magic-context] storage fatal: failed to open ${dbPath}: ${detail}`);
+		throw new Error(
+			`[magic-context] storage unavailable: ${detail}. Magic Context is disabled for this run; check log for details.`,
+		);
 	})();
 	pendingAsyncOpens.set(dbPath, opening);
 	try {
@@ -325,6 +342,7 @@ export async function openDatabaseAsync(dbPathOrOptions?: string | OpenDatabaseO
 		if (pendingAsyncOpens.get(dbPath) === opening) pendingAsyncOpens.delete(dbPath);
 	}
 }
+
 
 export function isDatabasePersisted(db: Database | null): boolean {
 	if (!db) return false;
