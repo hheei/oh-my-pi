@@ -188,6 +188,30 @@ describe("healCompartmentGaps via validateHistorianOutput", () => {
 	});
 });
 
+describe("folded Pi tool-result coverage", () => {
+	test("accepts source lines sharing a synthetic message ordinal", () => {
+		const xml = buildXml([{ start: 1, end: 3, title: "tool loop" }]);
+		const result = validateHistorianOutput(
+			xml,
+			"ses-tool-fold",
+			{
+				startIndex: 1,
+				endIndex: 3,
+				lines: [
+					{ ordinal: 1, messageId: "user-1" },
+					{ ordinal: 2, messageId: "assistant-1" },
+					{ ordinal: 3, messageId: "synth-user-tool-1" },
+					{ ordinal: 3, messageId: "tool-result-1" },
+				],
+			},
+			[],
+			0,
+		);
+
+		expect(result.ok).toBe(true);
+	});
+});
+
 describe("tiered historian output validation", () => {
 	test("rejects flat v1 compartments with actionable tier feedback", () => {
 		const flatXml = `<output><compartment start="1" end="2" title="flat">flat summary</compartment></output>`;
