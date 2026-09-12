@@ -63,6 +63,7 @@ export interface SessionMetaRow {
 	upgrade_reminded_at: number | null;
 	upgrade_reminder_last_sent_at: number | null;
 	upgrade_reminder_count: number | null;
+	pi_stable_id_scheme: number | null;
 	native_compaction_generation: number | null;
 	native_compaction_active: number | null;
 }
@@ -218,7 +219,6 @@ export function ensureStatusTokenAttributionColumns(db: Database): void {
 		db.exec("ALTER TABLE session_meta ADD COLUMN native_compaction_active INTEGER NOT NULL DEFAULT 0");
 	}
 }
-
 function ensureSessionFactsVersionColumn(db: Database): void {
 	const rows = db.prepare("PRAGMA table_info(session_meta)").all() as Array<{ name?: string }>;
 	if (!rows.some((row) => row.name === "session_facts_version")) {

@@ -432,6 +432,33 @@ describe("Pi status dialog", () => {
 		}
 	});
 
+	it("uses bounded legacy attribution before revision stamps existed", () => {
+		const db = createTestDb();
+		try {
+			const sessionId = "ses-status-legacy-attribution";
+			updateSessionMeta(db, sessionId, {
+				conversationTokens: 60,
+				toolCallTokens: 10,
+				recallTokens: 5,
+			});
+			const snapshot = collectStatusSnapshot(
+				{ getAllTools: () => [] } as never,
+				{
+					...fakeContext(sessionId),
+					model: { provider: "anthropic", id: "claude", contextWindow: 1_000, maxTokens: 1 },
+					getContextUsage: () => ({ tokens: 100, percent: 10, contextWindow: 1_000 }),
+					getSystemPrompt: () => "",
+				} as never,
+				{ db, projectIdentity: resolveProjectIdentity(process.cwd()) },
+				sessionId,
+			);
+			expect(snapshot.tokenBreakdownAvailable).toBe(true);
+			expect(snapshot.unattributedTokens).toBe(25);
+		} finally {
+			closeQuietly(db);
+		}
+	});
+
 	it("keeps kernel summary while an overrun attribution awaits refresh", () => {
 		const db = createTestDb();
 		try {

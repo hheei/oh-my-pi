@@ -486,14 +486,14 @@ export function collectStatusSnapshot(
 		Number.isFinite(attributedTokens) &&
 		attributedTokens > inputTokens;
 	const tokenBreakdownAvailable =
-		storedAttributionMatchesModel &&
 		inputTokens > 0 &&
 		Number.isFinite(attributedTokens) &&
 		attributedTokens >= 0 &&
-		attributedTokens <= inputTokens;
+		attributedTokens <= inputTokens &&
+		(storedAttributionMatchesModel || meta.tokenAttributionRevision === null);
 	const toolCallTokens = tokenBreakdownAvailable ? meta.toolCallTokens : 0;
 	const recallTokens = tokenBreakdownAvailable ? meta.recallTokens : 0;
-	const unattributedTokens = tokenBreakdownAvailable ? inputTokens - attributedTokens : 0;
+	const unattributedTokens = tokenBreakdownAvailable ? Math.max(0, inputTokens - attributedTokens) : 0;
 	if (tokenBreakdownRefreshPending) diagnostics.push("Token attribution refresh pending");
 	const workMetrics = optional("Work metrics", () => getSessionWorkMetrics(deps.db, sessionId), { newWorkTokens: 0, totalInputTokens: inputTokens });
 	let branchId = "main";
