@@ -84,6 +84,10 @@
 	"dependencies": {
 		"opencc-js": "^1.4.0"
 	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.10",
+		"@typescript/native-preview": "7.0.0-dev.20260707.2"
+	},
 	"peerDependencies": {
 		"@oh-my-pi/pi-coding-agent": "*",
 		"@oh-my-pi/pi-tui": "*",
